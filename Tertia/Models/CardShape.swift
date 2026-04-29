@@ -9,7 +9,17 @@ import Foundation
 
 nonisolated enum CardShape: CaseIterable {
     case circle, square, triangle
-    
+
+    var displayName: String {
+        switch self {
+        case .circle: "circle"
+        case .square: "square"
+        case .triangle: "triangle"
+        }
+    }
+
+    var pluralForm: String { displayName + "s" }
+
     func systemName(for fill: CardFill) -> String {
         let base = switch self {
         case .circle: "circle"

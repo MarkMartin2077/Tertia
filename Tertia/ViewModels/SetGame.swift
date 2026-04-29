@@ -35,6 +35,10 @@ class SetGame {
         deck.isEmpty && !boardContainsSet()
     }
 
+    var hasSetOnBoard: Bool {
+        boardContainsSet()
+    }
+
     var canShowHint: Bool {
         mode.allowsHint
     }

@@ -27,6 +27,7 @@ struct GameView: View {
     @State private var taskTrigger = 0
     @State private var pulseToken = 0
     @State private var hasDealtInitialBoard = false
+    @State private var dealOverlayPulse = false
     @State private var didFireTimerWarning = false
     @State private var hasHandledExpiry = false
 
@@ -58,6 +59,14 @@ struct GameView: View {
         mode == .practice && game.selectedCards.count == SetGame.setSize
     }
 
+    private var shouldShowDealThreeOverlay: Bool {
+        hasDealtInitialBoard
+            && !game.hasSetOnBoard
+            && !game.isGameOver
+            && game.selectedCards.isEmpty
+            && game.canDealThree
+    }
+
     private var currentFailingAttributes: Set<CardAttribute> {
         guard mode == .practice, game.hasInvalidSelection else { return [] }
         return Set(explain(Array(game.selectedCards)).failingAttributes)
@@ -68,6 +77,13 @@ struct GameView: View {
             VStack(spacing: 0) {
                 headerRow
                 gridArea
+                    .overlay {
+                        if shouldShowDealThreeOverlay {
+                            dealThreeOverlay
+                                .transition(.scale(scale: 0.85).combined(with: .opacity))
+                        }
+                    }
+                    .animation(.spring(response: 0.45, dampingFraction: 0.78), value: shouldShowDealThreeOverlay)
             }
             .opacity(showGameOver ? 0.5 : 1.0)
             .blur(radius: showGameOver ? 2 : 0)
@@ -75,8 +91,10 @@ struct GameView: View {
             .tint(mode.accentColor)
             .safeAreaInset(edge: .bottom) {
                 if shouldShowPracticeVerdict {
+                    let selected = Array(game.selectedCards)
                     PracticeVerdictBar(
-                        explanation: explain(Array(game.selectedCards)),
+                        cards: selected,
+                        explanation: explain(selected),
                         onDismiss: {
                             withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
                                 game.acknowledgeSelection()
@@ -90,6 +108,8 @@ struct GameView: View {
             .toolbar { toolbarContent }
             .alert("No sets on the board", isPresented: $showNoHintAlert) {
                 Button("OK", role: .cancel) {}
+            } message: {
+                Text("Tap Deal 3 to add more cards.")
             }
             .confirmationDialog(
                 "Start a new game?",
@@ -170,6 +190,85 @@ struct GameView: View {
         .padding(.bottom, 16)
     }
 
+    private var dealThreeOverlay: some View {
+        Button {
+            Task { await runDealThreeAnimation() }
+        } label: {
+            HStack(spacing: 16) {
+                fannedCardsIcon
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("DEAL 3")
+                        .font(.title2.weight(.heavy))
+                        .tracking(2)
+                    Text("No set on this board")
+                        .font(.caption.weight(.medium))
+                        .opacity(0.8)
+                }
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 22)
+            .padding(.vertical, 16)
+            .background(
+                RoundedRectangle(cornerRadius: 18)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color(red: 0.20, green: 0.24, blue: 0.34),
+                                Color(red: 0.09, green: 0.11, blue: 0.18)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 18)
+                    .strokeBorder(.white.opacity(0.18), lineWidth: 1)
+            }
+            .shadow(color: .black.opacity(0.45), radius: 16, y: 6)
+            .scaleEffect(dealOverlayPulse ? 1.04 : 1.0)
+            .animation(
+                .easeInOut(duration: 1.1).repeatForever(autoreverses: true),
+                value: dealOverlayPulse
+            )
+        }
+        .buttonStyle(.plain)
+        .onAppear { dealOverlayPulse = true }
+        .onDisappear { dealOverlayPulse = false }
+        .accessibilityLabel("Deal three more cards")
+        .accessibilityHint("No set is on the board. Tap to add three more cards.")
+    }
+
+    private var fannedCardsIcon: some View {
+        ZStack {
+            miniCard(symbol: "circle.fill", tint: .red)
+                .rotationEffect(.degrees(-14))
+                .offset(x: -16, y: 4)
+            miniCard(symbol: "square.fill", tint: .green)
+                .offset(x: 0, y: -2)
+            miniCard(symbol: "triangle.fill", tint: .blue)
+                .rotationEffect(.degrees(14))
+                .offset(x: 16, y: 4)
+        }
+        .frame(width: 72, height: 56)
+    }
+
+    private func miniCard(symbol: String, tint: Color) -> some View {
+        RoundedRectangle(cornerRadius: 5)
+            .fill(.white)
+            .frame(width: 30, height: 42)
+            .overlay {
+                RoundedRectangle(cornerRadius: 5)
+                    .strokeBorder(.black.opacity(0.12), lineWidth: 0.5)
+            }
+            .overlay {
+                Image(systemName: symbol)
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(tint)
+            }
+            .shadow(color: .black.opacity(0.25), radius: 3, y: 2)
+    }
+
     private var gridArea: some View {
         GeometryReader { geometry in
             // Floor at boardSize/columnCount so cells don't resize during the
@@ -194,7 +293,7 @@ struct GameView: View {
                         game.select(card)
                     }
                     .frame(height: cellHeight)
-                    .transition(.scale.combined(with: .opacity))
+                    .transition(.move(edge: .top).combined(with: .opacity))
                 }
             }
             .padding(.horizontal, 20)
@@ -225,7 +324,7 @@ struct GameView: View {
             }
             if mode.allowsDealThree {
                 Button("Deal 3", systemImage: "plus.rectangle.on.rectangle") {
-                    game.dealThreeMore()
+                    Task { await runDealThreeAnimation() }
                 }
                 .disabled(!game.canDealThree)
                 .accessibilityHint(game.canDealThree ? "" : "Find the visible set first")
@@ -285,6 +384,24 @@ struct GameView: View {
         didFireTimerWarning = false
         hasHandledExpiry = false
         taskTrigger += 1
+    }
+
+    private func runDealThreeAnimation() async {
+        guard game.canDealThree else { return }
+        feedback.dealDeck()
+        let dealInterval: Duration = .milliseconds(110)
+        for i in 0..<SetGame.setSize {
+            withAnimation(.spring(response: 0.42, dampingFraction: 0.78)) {
+                _ = game.dealOne()
+            }
+            if i < SetGame.setSize - 1 {
+                do {
+                    try await Task.sleep(for: dealInterval)
+                } catch {
+                    return
+                }
+            }
+        }
     }
 
     private func runDealAnimation() async {

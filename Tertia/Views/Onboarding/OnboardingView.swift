@@ -73,7 +73,7 @@ private struct WelcomeSlide: View {
 
 private struct RuleSlide: View {
     var body: some View {
-        VStack(spacing: 24) {
+        VStack(spacing: 20) {
             Spacer()
             Text("What Makes a Set")
                 .font(.largeTitle.bold())
@@ -94,7 +94,21 @@ private struct RuleSlide: View {
             .background(Color.secondary.opacity(0.1), in: .rect(cornerRadius: 16))
             .padding(.horizontal, 24)
 
-            Spacer()
+            VStack(alignment: .leading, spacing: 8) {
+                Label {
+                    Text(.init("**Each attribute is checked separately.** A set can be all-same on color and all-different on shape — that's fine."))
+                } icon: {
+                    Image(systemName: "info.circle.fill").foregroundStyle(.tint)
+                }
+                Label {
+                    Text(.init("**Quick check:** if you can sort the three into \"two of one, one of another\" on any attribute, it's *not* a set."))
+                } icon: {
+                    Image(systemName: "lightbulb.fill").foregroundStyle(.yellow)
+                }
+            }
+            .font(.footnote)
+            .padding(.horizontal, 28)
+
             Spacer()
         }
     }
@@ -148,22 +162,28 @@ private struct ValidSetsSlide: View {
 
 private struct NonSetsSlide: View {
     var body: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: 16) {
             Text("Not Sets")
                 .font(.largeTitle.bold())
                 .padding(.top, 24)
+
+            Text(.init("The **\"two of one, one of another\"** trap — the most common beginner mistake."))
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
 
             VStack(spacing: 28) {
                 ExampleTrioView(
                     cards: ExampleData.mixedFillNonSet,
                     isSet: false,
-                    explanation: "Two filled, one empty — fill is mixed.",
+                    explanation: "Two filled, one empty. Fill breaks the rule.",
                     animateOnAppear: true
                 )
                 ExampleTrioView(
                     cards: ExampleData.mixedColorNonSet,
                     isSet: false,
-                    explanation: "Two reds, one green — color is mixed.",
+                    explanation: "Two red, one green. Color breaks the rule.",
                     animateOnAppear: true
                 )
             }

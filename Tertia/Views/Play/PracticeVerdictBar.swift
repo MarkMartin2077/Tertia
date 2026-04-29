@@ -8,34 +8,31 @@
 import SwiftUI
 
 struct PracticeVerdictBar: View {
+    let cards: [SetCard]
     let explanation: SetExplanation
     let onDismiss: () -> Void
 
     var body: some View {
         Button(action: onDismiss) {
-            HStack(spacing: 14) {
-                Image(systemName: explanation.isSet ? "checkmark.circle.fill" : "xmark.circle.fill")
-                    .font(.title2)
-                    .foregroundStyle(verdictColor)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(primaryText)
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 10) {
+                    Image(systemName: explanation.isSet ? "checkmark.circle.fill" : "xmark.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(verdictColor)
+                    Text(explanation.isSet ? "It's a set!" : "Not a set")
                         .font(.subheadline.bold())
                         .foregroundStyle(.primary)
-                        .multilineTextAlignment(.leading)
-                    if !secondaryText.isEmpty {
-                        Text(secondaryText)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .multilineTextAlignment(.leading)
-                    }
+                    Spacer(minLength: 8)
+                    Image(systemName: "chevron.right")
+                        .font(.footnote)
+                        .foregroundStyle(.tertiary)
                 }
 
-                Spacer(minLength: 8)
-
-                Image(systemName: "chevron.right")
-                    .font(.footnote)
-                    .foregroundStyle(.tertiary)
+                VStack(spacing: 4) {
+                    ForEach(CardAttribute.allCases) { attribute in
+                        attributeRow(attribute)
+                    }
+                }
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 14)
@@ -51,7 +48,7 @@ struct PracticeVerdictBar: View {
         .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(explanation.isSet ? "Valid set" : "Not a set")
-        .accessibilityValue(secondaryText.isEmpty ? primaryText : "\(primaryText). \(secondaryText)")
+        .accessibilityValue(accessibilityValue)
         .accessibilityHint("Double tap to continue")
     }
 
@@ -59,56 +56,83 @@ struct PracticeVerdictBar: View {
         explanation.isSet ? .green : .red
     }
 
-    private var primaryText: String {
-        if explanation.isSet { return "It's a set!" }
-        let failing = explanation.failingAttributes.map(\.label)
-        switch failing.count {
-        case 0: return "Not a set"
-        case 1: return "Not a set — \(failing[0]) is mixed"
-        case 2: return "Not a set — \(failing[0]) and \(failing[1]) are mixed"
-        default: return "Not a set — multiple attributes are mixed"
+    private func attributeRow(_ attribute: CardAttribute) -> some View {
+        let outcome = explanation.outcome(for: attribute) ?? .mixed
+        return HStack(spacing: 10) {
+            Image(systemName: outcomeIcon(outcome))
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(outcomeColor(outcome))
+                .frame(width: 16)
+            Text(attribute.label.capitalized)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.primary)
+                .frame(width: 52, alignment: .leading)
+            Text(describe(cards, attribute: attribute))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 0)
         }
     }
 
-    private var secondaryText: String {
-        if !explanation.isSet { return "Tap to try again" }
-
-        let allSame = explanation.analyses
-            .filter { $0.outcome == .allSame }
-            .map(\.attribute.label)
-        let allDifferent = explanation.analyses
-            .filter { $0.outcome == .allDifferent }
-            .map(\.attribute.label)
-
-        var parts: [String] = []
-        if !allSame.isEmpty {
-            parts.append("Same: \(allSame.joined(separator: ", "))")
+    private func outcomeIcon(_ outcome: AttributeOutcome) -> String {
+        switch outcome {
+        case .allSame: "equal.circle.fill"
+        case .allDifferent: "arrow.left.and.right.circle.fill"
+        case .mixed: "xmark.circle.fill"
         }
-        if !allDifferent.isEmpty {
-            parts.append("Different: \(allDifferent.joined(separator: ", "))")
+    }
+
+    private func outcomeColor(_ outcome: AttributeOutcome) -> Color {
+        switch outcome {
+        case .allSame, .allDifferent: .green
+        case .mixed: .red
         }
-        return parts.joined(separator: " · ")
+    }
+
+    private var accessibilityValue: String {
+        let headline = explanation.isSet ? "It's a set." : "Not a set."
+        let rows = CardAttribute.allCases.map { attr in
+            "\(attr.label.capitalized): \(describe(cards, attribute: attr))"
+        }.joined(separator: ". ")
+        return "\(headline) \(rows)"
     }
 }
 
 #Preview("Valid set") {
+    let cards = [
+        SetCard(shape: .circle, count: .one, color: .red, fill: .filled),
+        SetCard(shape: .square, count: .two, color: .green, fill: .empty),
+        SetCard(shape: .triangle, count: .three, color: .blue, fill: .rightHalf)
+    ]
     PracticeVerdictBar(
-        explanation: explain([
-            SetCard(shape: .circle, count: .one, color: .red, fill: .filled),
-            SetCard(shape: .square, count: .two, color: .green, fill: .empty),
-            SetCard(shape: .triangle, count: .three, color: .blue, fill: .rightHalf)
-        ]),
+        cards: cards,
+        explanation: explain(cards),
         onDismiss: {}
     )
 }
 
 #Preview("Mixed fill") {
+    let cards = [
+        SetCard(shape: .circle, count: .one, color: .red, fill: .filled),
+        SetCard(shape: .circle, count: .one, color: .red, fill: .filled),
+        SetCard(shape: .circle, count: .one, color: .red, fill: .empty)
+    ]
     PracticeVerdictBar(
-        explanation: explain([
-            SetCard(shape: .circle, count: .one, color: .red, fill: .filled),
-            SetCard(shape: .circle, count: .one, color: .red, fill: .filled),
-            SetCard(shape: .circle, count: .one, color: .red, fill: .empty)
-        ]),
+        cards: cards,
+        explanation: explain(cards),
+        onDismiss: {}
+    )
+}
+
+#Preview("Mixed color") {
+    let cards = [
+        SetCard(shape: .circle, count: .one, color: .red, fill: .filled),
+        SetCard(shape: .square, count: .one, color: .green, fill: .filled),
+        SetCard(shape: .triangle, count: .one, color: .red, fill: .filled)
+    ]
+    PracticeVerdictBar(
+        cards: cards,
+        explanation: explain(cards),
         onDismiss: {}
     )
 }

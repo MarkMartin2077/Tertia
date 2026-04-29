@@ -18,7 +18,7 @@ struct RulesView: View {
 
                 section(
                     title: "What is a Set?",
-                    body: "Three cards form a set if, for each of the four attributes, the values are either **all the same** or **all different** across the three cards."
+                    body: "Three cards form a set if, for each of the four attributes, the values are either **all the same** or **all different** across the three cards.\n\n**Each attribute is checked independently.** A trio can be all-same on color, all-different on shape, all-same on count, and all-different on fill — and still be a valid set."
                 )
 
                 VStack(alignment: .leading, spacing: 16) {
@@ -37,9 +37,14 @@ struct RulesView: View {
                     ExampleTrioView(
                         cards: ExampleData.mixedSet,
                         isSet: true,
-                        explanation: "Different shapes and counts; same color and fill."
+                        explanation: "All-same color and fill, all-different shape and count. Per-attribute independence in action."
                     )
                 }
+
+                section(
+                    title: "Common Mistake",
+                    body: "If you can sort the three cards into **\"two of one, one of another\"** on any attribute, it's not a set.\n\nThis is the trap beginners fall into: two reds and a green, two filled and an empty, two circles and a square. The rule needs *all same* or *all different* — never two-and-one."
+                )
 
                 VStack(alignment: .leading, spacing: 16) {
                     Text("Not Sets")
@@ -47,12 +52,12 @@ struct RulesView: View {
                     ExampleTrioView(
                         cards: ExampleData.mixedFillNonSet,
                         isSet: false,
-                        explanation: "Two filled, one empty — fill is mixed."
+                        explanation: "Two filled, one empty. Fill is two-and-one."
                     )
                     ExampleTrioView(
                         cards: ExampleData.mixedColorNonSet,
                         isSet: false,
-                        explanation: "Two reds, one green — color is mixed."
+                        explanation: "Two red, one green. Color is two-and-one."
                     )
                 }
 
