@@ -32,7 +32,13 @@ struct DailyStreakChart: View {
         VStack(alignment: .leading, spacing: 12) {
             header
             grid
-            legend
+            if records.isEmpty {
+                Text("Complete today's puzzle to start your streak.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            } else {
+                legend
+            }
         }
     }
 

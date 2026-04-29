@@ -43,11 +43,7 @@ private struct StatsContent: View {
 
     var body: some View {
         if let viewModel {
-            if !viewModel.hasDailyHistory && !viewModel.hasTimeAttackHistory {
-                StatsEmptyState(onPlayTimeAttack: onPlayTimeAttack)
-            } else {
-                StatsScroll(viewModel: viewModel)
-            }
+            StatsScroll(viewModel: viewModel, onPlayTimeAttack: onPlayTimeAttack)
         }
     }
 }
@@ -56,10 +52,19 @@ private struct StatsContent: View {
 
 private struct StatsScroll: View {
     let viewModel: StatsViewModel
+    let onPlayTimeAttack: () -> Void
+
+    private var isCompletelyEmpty: Bool {
+        !viewModel.hasDailyHistory && !viewModel.hasTimeAttackHistory
+    }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 28) {
+                if isCompletelyEmpty {
+                    StatsWelcomeBanner(onPlayTimeAttack: onPlayTimeAttack)
+                }
+
                 StatsSummary(viewModel: viewModel)
 
                 ChartCard {
@@ -79,6 +84,40 @@ private struct StatsScroll: View {
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 20)
+        }
+    }
+}
+
+private struct StatsWelcomeBanner: View {
+    let onPlayTimeAttack: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "chart.line.uptrend.xyaxis")
+                    .font(.title)
+                    .foregroundStyle(.purple)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Your stats live here")
+                        .font(.headline)
+                    Text("Play the Daily Puzzle to start a streak, or run Time Attack to set a high score. The charts below fill in as you go.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Button(action: onPlayTimeAttack) {
+                Label("Start Time Attack", systemImage: "timer")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .tint(.orange)
+        }
+        .padding(16)
+        .background(.background, in: .rect(cornerRadius: 16))
+        .overlay {
+            RoundedRectangle(cornerRadius: 16)
+                .strokeBorder(Color.purple.opacity(0.35), lineWidth: 1.5)
         }
     }
 }
@@ -103,9 +142,7 @@ private struct StatsSummary: View {
                 )
             }
 
-            if viewModel.hasTimeAttackHistory {
-                BestScoresSection(viewModel: viewModel)
-            }
+            BestScoresSection(viewModel: viewModel)
         }
     }
 }
@@ -208,39 +245,6 @@ private struct ChartCard<Content: View>: View {
                 RoundedRectangle(cornerRadius: 16)
                     .strokeBorder(Color.secondary.opacity(0.2), lineWidth: 1)
             }
-    }
-}
-
-// MARK: - Empty state
-
-private struct StatsEmptyState: View {
-    let onPlayTimeAttack: () -> Void
-
-    var body: some View {
-        VStack(spacing: 20) {
-            Image(systemName: "chart.line.uptrend.xyaxis")
-                .font(.system(size: 56))
-                .foregroundStyle(.tertiary)
-            VStack(spacing: 6) {
-                Text("No runs yet")
-                    .font(.title2.bold())
-                Text("Play Time Attack or the Daily Puzzle to start your stats.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-            }
-            Button(action: onPlayTimeAttack) {
-                Label("Start Time Attack", systemImage: "timer")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .tint(.orange)
-            .padding(.horizontal, 40)
-            .padding(.top, 8)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding()
     }
 }
 
