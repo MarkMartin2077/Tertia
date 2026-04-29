@@ -1,28 +1,28 @@
-# Triplix Improvement Plan
+# Tertia Improvement Plan
 
-A prioritized list of fixes, features, and polish items for the Triplix Set card game.
+A prioritized list of fixes, features, and polish items for the Tertia Set card game.
 
 ---
 
 ## P0 — Bugs & Correctness
 
 ### 1. `resolveMatchedCards` parameter type
-**File:** `Triplix/SetGame.swift:91`
+**File:** `Tertia/SetGame.swift:91`
 **Issue:** Parameter typed as `Set<SetCard?>` but always called with `Set<SetCard>`.
 **Fix:** Change signature to `func resolveMatchedCards(matching matchedCards: Set<SetCard>)` and update the `.contains` call accordingly.
 
 ### 2. `showHint()` silently clears selection when no set exists
-**File:** `Triplix/SetGame.swift:111-113`
+**File:** `Tertia/SetGame.swift:111-113`
 **Issue:** When `findSetOnBoard()` returns `[]`, `selectedCards = Set([].prefix(2))` clears the user's existing selection without any feedback.
 **Fix:** Make `findSetOnBoard()` return `[SetCard]?` (or have `showHint` return `Bool`), and when nil/false, surface a UI message like "No sets on board — deal more cards."
 
 ### 3. `findSetOnBoard()` only randomizes outer loop
-**File:** `Triplix/SetGame.swift:115-135`
+**File:** `Tertia/SetGame.swift:115-135`
 **Issue:** Hints favor low-index second/third cards because only `firstIndex` is shuffled.
 **Fix:** Generate all valid triples, shuffle the result, and return the first match. Or use a single shuffled list of index combinations.
 
 ### 4. ForEach identity defeats card transitions
-**File:** `Triplix/ContentView.swift:24`
+**File:** `Tertia/ContentView.swift:24`
 **Issue:** `ForEach(game.boardSlots.indices, id: \.self)` keys identity by slot index, so when a card is replaced, the transition (`.scale.combined(with: .opacity)`) doesn't trigger — SwiftUI sees the same identity.
 **Fix:** Iterate over cards keyed by `card.id` for the transition to fire, or apply the transition to the inner `SetCardView` keyed on `card.id`.
 
@@ -48,7 +48,7 @@ A prioritized list of fixes, features, and polish items for the Triplix Set card
 **Fix:** Compute `isGameOver = deck.isEmpty && findSetOnBoard().isEmpty` and present an alert / overlay with final score and a "New Game" button.
 
 ### 9. No invalid-set feedback
-**File:** `Triplix/SetGame.swift:65-75`
+**File:** `Tertia/SetGame.swift:65-75`
 **Issue:** When the player selects 3 cards that don't form a set, there's no visible "wrong" state — they only learn it failed when they tap a 4th card and the selection clears.
 **Fix:** Track an `invalidSelection: Bool` (or similar) and flash the 3 cards red briefly before clearing.
 
@@ -61,7 +61,7 @@ A prioritized list of fixes, features, and polish items for the Triplix Set card
 ## P2 — Refactors
 
 ### 11. Resolve the `flatMap` TODO
-**File:** `Triplix/SetGame.swift:27-55`
+**File:** `Tertia/SetGame.swift:27-55`
 **Replace nested for-loops with:**
 ```swift
 deck = CardShape.allCases.flatMap { shape in
@@ -76,7 +76,7 @@ deck = CardShape.allCases.flatMap { shape in
 ```
 
 ### 12. Tighten `SetGame` API surface
-**File:** `Triplix/SetGame.swift`
+**File:** `Tertia/SetGame.swift`
 **Mark `private`:** `drawCards`, `createBoard`, `resolveMatchedCards`, `allSameOrAllDifferent`, `findSetOnBoard`. Keep public: `select`, `showHint`, and a future `newGame`/`dealThree`.
 
 ### 13. Name the magic numbers
@@ -84,7 +84,7 @@ deck = CardShape.allCases.flatMap { shape in
 **Fix:** Add constants like `static let boardSize = 18`, `static let setSize = 3` on `SetGame`. In `ContentView`, derive `rowCount` from `boardSize / columnCount`.
 
 ### 14. Animate selection toggles
-**File:** `Triplix/SetGame.swift:57-75`
+**File:** `Tertia/SetGame.swift:57-75`
 **Issue:** Only `resolveMatchedCards` runs inside `withAnimation`. Selecting/deselecting cards is instant.
 **Fix:** Wrap the body of `select(_:)` in `withAnimation` (or animate `isSelected` in `SetCardView`).
 
@@ -93,21 +93,21 @@ deck = CardShape.allCases.flatMap { shape in
 ## P3 — Polish & Accessibility
 
 ### 15. Accessibility labels for cards
-**File:** `Triplix/SetCardView.swift`
+**File:** `Tertia/SetCardView.swift`
 **Fix:** Add `.accessibilityLabel("\(card.count) \(card.color) \(card.fill) \(card.shape)")` (after making the enums describe themselves via `CustomStringConvertible` or similar).
 
 ### 16. Symbol size doesn't scale
-**File:** `Triplix/SetSymbolView.swift:12`
+**File:** `Tertia/SetSymbolView.swift:12`
 **Issue:** Hardcoded `symbolSize = 32.0` will overflow on smaller devices and looks small on iPad.
 **Fix:** Use `@ScaledMetric` for Dynamic Type support, or compute size from container with `GeometryReader` / `containerRelativeFrame`.
 
 ### 17. Hint UX
-**File:** `Triplix/SetGame.swift:111-113`
+**File:** `Tertia/SetGame.swift:111-113`
 **Issue:** Hint pre-selects 2 cards as if the user picked them — no visual distinction between hint state and normal selection.
 **Fix:** Add a separate `hintedCards: Set<SetCard>` and render hinted cards with a different border (e.g. blue) so the user knows the system suggested them.
 
 ### 18. `SetCard` Hashable comment
-**File:** `Triplix/SetCard.swift:10`
+**File:** `Tertia/SetCard.swift:10`
 **Issue:** Auto-synthesized `Hashable` includes the `UUID id`, meaning two cards with identical attributes are distinct. This is intentional (every physical card in the deck is unique) but non-obvious.
 **Fix:** One-line comment explaining the intent, or implement `Hashable` manually using only `id`.
 
@@ -117,7 +117,7 @@ deck = CardShape.allCases.flatMap { shape in
 
 ### 19. No tests
 **Issue:** No XCTest / Swift Testing target visible.
-**Fix:** Add a `TriplixTests` target with at minimum:
+**Fix:** Add a `TertiaTests` target with at minimum:
 - `isSet` truth table covering all-same, all-different, and mixed for each attribute
 - `allSameOrAllDifferent` edge cases
 - `select` flow: select 3 valid, select 3 invalid, deselect, 4th-card-after-3 reset

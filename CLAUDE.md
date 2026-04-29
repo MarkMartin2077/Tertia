@@ -4,42 +4,42 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Triplix is a SwiftUI iOS implementation of the Set card game. Single Xcode project, three targets: `Triplix` (app), `TriplixTests` (Swift Testing unit tests), `TriplixUITests` (XCUITest). Universal (iPhone/iPad), iOS 26.2 deployment target, Swift 5.
+Tertia is a SwiftUI iOS implementation of the Set card game. Single Xcode project, three targets: `Tertia` (app), `TertiaTests` (Swift Testing unit tests), `TertiaUITests` (XCUITest). Universal (iPhone/iPad), iOS 26.2 deployment target, Swift 5.
 
 ## Build / Test Commands
 
-The project uses one shared scheme (`Triplix`) covering all three targets.
+The project uses one shared scheme (`Tertia`) covering all three targets.
 
 ```bash
 # Build for simulator
-xcodebuild -project Triplix.xcodeproj -scheme Triplix \
+xcodebuild -project Tertia.xcodeproj -scheme Tertia \
   -destination 'platform=iOS Simulator,name=iPhone 16' build
 
 # Run all tests (unit + UI)
-xcodebuild test -project Triplix.xcodeproj -scheme Triplix \
+xcodebuild test -project Tertia.xcodeproj -scheme Tertia \
   -destination 'platform=iOS Simulator,name=iPhone 16'
 
 # Run a single Swift Testing case (note the @Suite name, then test function name)
-xcodebuild test -project Triplix.xcodeproj -scheme Triplix \
+xcodebuild test -project Tertia.xcodeproj -scheme Tertia \
   -destination 'platform=iOS Simulator,name=iPhone 16' \
-  -only-testing:TriplixTests/SetGame/freshGameDealtCorrectly
+  -only-testing:TertiaTests/SetGame/freshGameDealtCorrectly
 
 # Run only unit tests (skip UI tests)
-xcodebuild test -project Triplix.xcodeproj -scheme Triplix \
+xcodebuild test -project Tertia.xcodeproj -scheme Tertia \
   -destination 'platform=iOS Simulator,name=iPhone 16' \
-  -only-testing:TriplixTests
+  -only-testing:TertiaTests
 ```
 
 Unit tests use **Swift Testing** (`import Testing`, `@Suite`, `@Test`, `#expect`), not XCTest. UI tests still use XCTest.
 
-The Xcode project uses **PBXFileSystemSynchronizedRootGroup** — files added to `Triplix/`, `TriplixTests/`, or `TriplixUITests/` on disk are picked up automatically; no `project.pbxproj` edit is required to add a new source file.
+The Xcode project uses **PBXFileSystemSynchronizedRootGroup** — files added to `Tertia/`, `TertiaTests/`, or `TertiaUITests/` on disk are picked up automatically; no `project.pbxproj` edit is required to add a new source file.
 
 ## Architecture
 
 ### Layering
 
 ```
-TriplixApp (entry, injects stores)
+TertiaApp (entry, injects stores)
    └── ContentView (TabView: Play / Stats / Settings, gates onboarding)
         └── PlayCoordinator (ModeSelectView ↔ GameView)
              └── GameView (owns SetGame + optional TimeAttackController)
@@ -56,7 +56,7 @@ Two cross-cutting wrinkles to know:
 
 ### State / persistence
 
-The project uses Swift's **Observation** framework (`@Observable`), not `ObservableObject`. Stores are injected via `.environment(...)` in `TriplixApp`:
+The project uses Swift's **Observation** framework (`@Observable`), not `ObservableObject`. Stores are injected via `.environment(...)` in `TertiaApp`:
 
 - `HighScoreStore` — Time Attack scores, keyed by duration (UserDefaults `highScores.v1`).
 - `DailyStore` — daily streak + today's record, with day-rollover logic (UserDefaults `daily.v1`). `displayedStreak` returns 0 if the user skipped a day; `currentStreak` is the persisted value.
