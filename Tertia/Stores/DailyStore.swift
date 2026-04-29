@@ -26,6 +26,14 @@ final class DailyStore {
     private(set) var todaysRecord: DailyRecord?
     private(set) var dismissedDay: Date?
 
+    /// All completed daily runs, ordered oldest → newest. Capped at
+    /// `historyLimit` entries; older entries fall off the back. Today's record
+    /// is mirrored here once `recordCompletion` runs, so charts can treat
+    /// `pastRecords` as the full source of truth.
+    private(set) var pastRecords: [DailyRecord] = []
+
+    private let historyLimit = 365
+
     init(userDefaults: UserDefaults = .standard, calendar: Calendar = .current) {
         self.userDefaults = userDefaults
         self.calendar = calendar
@@ -80,8 +88,17 @@ final class DailyStore {
 
         bestStreak = max(bestStreak, currentStreak)
         lastPlayedDate = dayStart
-        todaysRecord = DailyRecord(day: dayStart, score: score)
+        let record = DailyRecord(day: dayStart, score: score)
+        todaysRecord = record
+        appendToHistory(record)
         save()
+    }
+
+    private func appendToHistory(_ record: DailyRecord) {
+        pastRecords.append(record)
+        if pastRecords.count > historyLimit {
+            pastRecords.removeFirst(pastRecords.count - historyLimit)
+        }
     }
 
     func clear() {
@@ -90,6 +107,7 @@ final class DailyStore {
         bestStreak = 0
         todaysRecord = nil
         dismissedDay = nil
+        pastRecords = []
         userDefaults.removeObject(forKey: storageKey)
     }
 
@@ -112,19 +130,22 @@ final class DailyStore {
         let bestStreak: Int
         let todaysRecord: DailyRecord?
         let dismissedDay: Date?
+        let pastRecords: [DailyRecord]
 
         init(
             lastPlayedDate: Date?,
             currentStreak: Int,
             bestStreak: Int,
             todaysRecord: DailyRecord?,
-            dismissedDay: Date?
+            dismissedDay: Date?,
+            pastRecords: [DailyRecord]
         ) {
             self.lastPlayedDate = lastPlayedDate
             self.currentStreak = currentStreak
             self.bestStreak = bestStreak
             self.todaysRecord = todaysRecord
             self.dismissedDay = dismissedDay
+            self.pastRecords = pastRecords
         }
 
         init(from decoder: Decoder) throws {
@@ -134,6 +155,7 @@ final class DailyStore {
             self.bestStreak = try c.decodeIfPresent(Int.self, forKey: .bestStreak) ?? 0
             self.todaysRecord = try c.decodeIfPresent(DailyRecord.self, forKey: .todaysRecord)
             self.dismissedDay = try c.decodeIfPresent(Date.self, forKey: .dismissedDay)
+            self.pastRecords = try c.decodeIfPresent([DailyRecord].self, forKey: .pastRecords) ?? []
         }
     }
 
@@ -147,6 +169,14 @@ final class DailyStore {
         bestStreak = decoded.bestStreak
         todaysRecord = decoded.todaysRecord
         dismissedDay = decoded.dismissedDay
+        pastRecords = decoded.pastRecords
+
+        // Backfill: existing users have a todaysRecord but no pastRecords entry
+        // for it. Promote it so charts have at least one data point on first
+        // launch under this version.
+        if pastRecords.isEmpty, let record = todaysRecord {
+            pastRecords = [record]
+        }
     }
 
     private func save() {
@@ -155,7 +185,8 @@ final class DailyStore {
             currentStreak: currentStreak,
             bestStreak: bestStreak,
             todaysRecord: todaysRecord,
-            dismissedDay: dismissedDay
+            dismissedDay: dismissedDay,
+            pastRecords: pastRecords
         )
         guard let data = try? JSONEncoder().encode(snapshot) else { return }
         userDefaults.set(data, forKey: storageKey)

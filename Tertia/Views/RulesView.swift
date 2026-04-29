@@ -25,19 +25,19 @@ struct RulesView: View {
                     Text("These ARE Trios")
                         .font(.headline)
                     ExampleTrioView(
-                        cards: ExampleData.allSameSet,
+                        cards: ExampleData.oneAttributeDifferentSet,
                         isSet: true,
-                        explanation: "All four attributes are the same."
-                    )
-                    ExampleTrioView(
-                        cards: ExampleData.allDifferentSet,
-                        isSet: true,
-                        explanation: "Every attribute is different."
+                        explanation: "Same shape, color, and fill — only the count is all-different. The simplest kind of trio to spot."
                     )
                     ExampleTrioView(
                         cards: ExampleData.mixedSet,
                         isSet: true,
-                        explanation: "All-same color and fill, all-different shape and count. Per-attribute independence in action."
+                        explanation: "Shape and count all-different; color and fill all-same. Each attribute is checked independently."
+                    )
+                    ExampleTrioView(
+                        cards: ExampleData.allDifferentSet,
+                        isSet: true,
+                        explanation: "Every attribute is all-different. The wildest-looking kind of trio."
                     )
                 }
 
@@ -49,12 +49,12 @@ struct RulesView: View {
                     ExampleTrioView(
                         cards: ExampleData.mixedFillNonSet,
                         isSet: false,
-                        explanation: "Two filled, one empty. Fill is two-and-one."
+                        explanation: "Counts go 1, 2, 3 — but fill is two filled, one empty. Two-and-one breaks it."
                     )
                     ExampleTrioView(
                         cards: ExampleData.mixedColorNonSet,
                         isSet: false,
-                        explanation: "Two red, one green. Color is two-and-one."
+                        explanation: "Three different shapes — but color is two red, one green. Two-and-one breaks it."
                     )
                 }
 

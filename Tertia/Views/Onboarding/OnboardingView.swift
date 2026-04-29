@@ -137,21 +137,21 @@ private struct ValidSetsSlide: View {
 
                 VStack(spacing: 20) {
                     ExampleTrioView(
-                        cards: ExampleData.allSameSet,
+                        cards: ExampleData.oneAttributeDifferentSet,
                         isSet: true,
-                        explanation: "All four attributes are the same.",
-                        animateOnAppear: true
-                    )
-                    ExampleTrioView(
-                        cards: ExampleData.allDifferentSet,
-                        isSet: true,
-                        explanation: "Every attribute is different.",
+                        explanation: "Same shape, color, and fill — only the count differs.",
                         animateOnAppear: true
                     )
                     ExampleTrioView(
                         cards: ExampleData.mixedSet,
                         isSet: true,
                         explanation: "Different shapes and counts; same color and fill.",
+                        animateOnAppear: true
+                    )
+                    ExampleTrioView(
+                        cards: ExampleData.allDifferentSet,
+                        isSet: true,
+                        explanation: "Every attribute is different.",
                         animateOnAppear: true
                     )
                 }
@@ -181,13 +181,13 @@ private struct NonSetsSlide: View {
                     ExampleTrioView(
                         cards: ExampleData.mixedFillNonSet,
                         isSet: false,
-                        explanation: "Two filled, one empty. Fill breaks the rule.",
+                        explanation: "Counts go 1, 2, 3 — but fill is two filled, one empty.",
                         animateOnAppear: true
                     )
                     ExampleTrioView(
                         cards: ExampleData.mixedColorNonSet,
                         isSet: false,
-                        explanation: "Two red, one green. Color breaks the rule.",
+                        explanation: "Three different shapes — but color is two red, one green.",
                         animateOnAppear: true
                     )
                 }
