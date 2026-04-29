@@ -49,6 +49,11 @@ struct GameOverSheet: View {
         }
         .padding(32)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .overlay {
+            if mode == .timeAttack && isNewBest && score > 0 {
+                ConfettiView()
+            }
+        }
         .accessibilityAddTraits(.isModal)
         .onAppear {
             UIAccessibility.post(

@@ -33,6 +33,13 @@ final class TimeAttackController {
         endDate == nil
     }
 
+    /// True once `start()` has been called. Stays true through pause/resume
+    /// and after expiry. Used by the view to avoid restarting the round when
+    /// `.task` re-fires (e.g., on tab switch).
+    var hasStarted: Bool {
+        endDate != nil || pausedRemaining != nil
+    }
+
     init(totalDuration: TimeInterval = 90) {
         self.totalDuration = totalDuration
         // endDate stays nil — call start() to begin the round. Until then,

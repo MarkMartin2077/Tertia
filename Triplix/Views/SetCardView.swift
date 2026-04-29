@@ -11,11 +11,26 @@ struct SetCardView: View {
     let card: SetCard
     let isSelected: Bool
     let isInvalid: Bool
+    var pulsingAttributes: Set<CardAttribute> = []
+    var pulseToken: Int = 0
     let action: () -> Void
+
+    private var pulsesShape: Bool {
+        !pulsingAttributes.isDisjoint(with: [.shape, .count, .fill])
+    }
+
+    private var pulsesColor: Bool {
+        pulsingAttributes.contains(.color)
+    }
 
     var body: some View {
         Button(action: action) {
-            SetCardLayoutView(card: card)
+            SetCardLayoutView(
+                card: card,
+                pulsesShape: pulsesShape,
+                pulsesColor: pulsesColor,
+                pulseToken: pulseToken
+            )
                 .padding(5)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(.background)

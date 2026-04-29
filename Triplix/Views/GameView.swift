@@ -25,6 +25,10 @@ struct GameView: View {
     @State private var showExitConfirm = false
     @State private var wasNewBest = false
     @State private var taskTrigger = 0
+    @State private var pulseToken = 0
+    @State private var hasDealtInitialBoard = false
+    @State private var didFireTimerWarning = false
+    @State private var hasHandledExpiry = false
 
     let columnCount = 3
     let cardSpacing = 6.0
@@ -52,6 +56,11 @@ struct GameView: View {
 
     private var shouldShowPracticeVerdict: Bool {
         mode == .practice && game.selectedCards.count == SetGame.setSize
+    }
+
+    private var currentFailingAttributes: Set<CardAttribute> {
+        guard mode == .practice, game.hasInvalidSelection else { return [] }
+        return Set(explain(Array(game.selectedCards)).failingAttributes)
     }
 
     var body: some View {
@@ -111,17 +120,25 @@ struct GameView: View {
                 if newValue > oldValue { feedback.validSet() }
             }
             .onChange(of: game.hasInvalidSelection) { _, isInvalid in
-                if isInvalid { feedback.invalidSet() }
+                if isInvalid {
+                    feedback.invalidSet()
+                    if mode == .practice { pulseToken += 1 }
+                }
             }
             .onChange(of: scenePhase) { _, phase in
                 handleScenePhase(phase)
             }
             .task(id: taskTrigger) {
-                await runDealAnimation()
-                if mode.usesTimer, let controller {
-                    controller.start()
-                    if scenePhase != .active {
-                        controller.pause()
+                if !hasDealtInitialBoard {
+                    await runDealAnimation()
+                    if game.boardSlots.count >= SetGame.boardSize {
+                        hasDealtInitialBoard = true
+                        if mode.usesTimer, let controller, !controller.hasStarted {
+                            controller.start()
+                            if scenePhase != .active {
+                                controller.pause()
+                            }
+                        }
                     }
                 }
                 await runTimerWatcher()
@@ -165,10 +182,13 @@ struct GameView: View {
 
             LazyVGrid(columns: columns, spacing: cardSpacing) {
                 ForEach(game.boardSlots) { card in
+                    let inInvalidTrio = game.hasInvalidSelection && game.selectedCards.contains(card)
                     SetCardView(
                         card: card,
                         isSelected: game.selectedCards.contains(card),
-                        isInvalid: game.hasInvalidSelection && game.selectedCards.contains(card)
+                        isInvalid: inInvalidTrio,
+                        pulsingAttributes: inInvalidTrio ? currentFailingAttributes : [],
+                        pulseToken: pulseToken
                     ) {
                         feedback.cardTap()
                         game.select(card)
@@ -261,14 +281,23 @@ struct GameView: View {
             controller = TimeAttackController()
         }
         wasNewBest = false
+        hasDealtInitialBoard = false
+        didFireTimerWarning = false
+        hasHandledExpiry = false
         taskTrigger += 1
     }
 
     private func runDealAnimation() async {
+        let needed = min(
+            SetGame.boardSize - game.boardSlots.count,
+            game.deck.count
+        )
+        guard needed > 0 else { return }
+
         feedback.dealDeck()
-        let dealInterval: Duration = .milliseconds(70)
-        for _ in 0..<SetGame.boardSize {
-            withAnimation(.spring(response: 0.45, dampingFraction: 0.78)) {
+        let dealInterval: Duration = .milliseconds(40)
+        for _ in 0..<needed {
+            withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
                 _ = game.dealOne()
             }
             do {
@@ -293,6 +322,8 @@ struct GameView: View {
 
     private func handleTimerExpiry() {
         guard let controller else { return }
+        guard !hasHandledExpiry else { return }
+        hasHandledExpiry = true
         let finalScore = game.score
         let duration = Int(controller.totalDuration)
 
@@ -317,10 +348,12 @@ struct GameView: View {
 
     private func runTimerWatcher() async {
         guard mode.usesTimer, let controller else { return }
-        var firedTenSecondWarning = false
+        // Don't watch until the controller has actually started (deal animation
+        // gates start). Otherwise we'd race expiry against the deal.
+        guard controller.hasStarted else { return }
         while !controller.isFinished {
-            if !firedTenSecondWarning && controller.remaining <= 10 && !controller.isPaused {
-                firedTenSecondWarning = true
+            if !didFireTimerWarning && controller.remaining <= 10 && !controller.isPaused {
+                didFireTimerWarning = true
                 feedback.timerWarning()
             }
             do {
