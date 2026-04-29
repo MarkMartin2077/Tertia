@@ -62,6 +62,7 @@ struct SettingsView: View {
                     LabeledContent("Version", value: "1.0")
                 }
             }
+            .boardBackground()
             .navigationTitle("Settings")
         }
     }

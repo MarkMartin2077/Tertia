@@ -23,6 +23,7 @@ struct ModeSelectView: View {
             }
             .padding(.bottom, 32)
         }
+        .boardBackground()
     }
 
     // MARK: - Sections
@@ -96,7 +97,7 @@ struct ModeSelectView: View {
         let date = formatter.string(from: record.day)
         var lines = [
             "🟪 Tertia Daily — \(date)",
-            "🎯 \(record.score) \(record.score == 1 ? "trio" : "trios") in 90s"
+            "🎯 \(record.score) \(record.score == 1 ? "trio" : "trios")"
         ]
         let streak = dailyStore.displayedStreak
         if streak > 1 {

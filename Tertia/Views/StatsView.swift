@@ -31,6 +31,7 @@ struct StatsView: View {
                     scoreList
                 }
             }
+            .boardBackground()
             .navigationTitle("Stats")
         }
     }

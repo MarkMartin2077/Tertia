@@ -16,7 +16,6 @@ struct GameView: View {
 
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.colorScheme) private var colorScheme
     @Environment(HighScoreStore.self) private var highScoreStore
     @Environment(DailyStore.self) private var dailyStore
     @Environment(FeedbackService.self) private var feedback
@@ -95,14 +94,6 @@ struct GameView: View {
         return Set(explain(Array(game.selectedCards)).failingAttributes)
     }
 
-    /// Warm paper-folio tint behind the card grid — gives the cream cards
-    /// a slightly contrasting surface to rest on instead of pure white.
-    private var boardBackground: Color {
-        colorScheme == .dark
-            ? Color(red: 0.075, green: 0.075, blue: 0.090)   // deep slate
-            : Color(red: 0.955, green: 0.940, blue: 0.910)   // paper folio
-    }
-
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
@@ -116,7 +107,7 @@ struct GameView: View {
                     }
                     .animation(.spring(response: 0.45, dampingFraction: 0.78), value: shouldShowDealThreeOverlay)
             }
-            .background(boardBackground.ignoresSafeArea())
+            .boardBackground()
             .opacity(showGameOver ? 0.5 : 1.0)
             .blur(radius: showGameOver ? 2 : 0)
             .animation(.default, value: showGameOver)
@@ -166,7 +157,12 @@ struct GameView: View {
                 Text("Your current score will be lost.")
             }
             .onChange(of: game.isGameOver) { _, isOver in
-                if isOver && !mode.usesTimer { showGameOver = true }
+                guard isOver, !mode.usesTimer else { return }
+                if mode == .daily,
+                   Calendar.current.isDateInToday(puzzleDate) {
+                    dailyStore.recordCompletion(score: game.score)
+                }
+                showGameOver = true
             }
             .onChange(of: game.score) { oldValue, newValue in
                 guard newValue > oldValue else { return }
@@ -225,6 +221,12 @@ struct GameView: View {
 
             if mode.usesTimer, let controller {
                 TimerLabel(controller: controller)
+                    .overlay(alignment: .leading) {
+                        // Anchor toast just to the left of the timer — its
+                        // trailing edge sits 8pt before the timer's leading.
+                        bonusToast
+                            .alignmentGuide(.leading) { d in d[.trailing] + 8 }
+                    }
             } else {
                 Label("\(game.deck.count)", systemImage: "rectangle.stack")
                     .font(.subheadline)
@@ -236,7 +238,6 @@ struct GameView: View {
         .padding(.horizontal, 20)
         .padding(.top, 8)
         .padding(.bottom, 16)
-        .overlay(alignment: .topTrailing) { bonusToast }
     }
 
     private var scoreChip: some View {
@@ -270,12 +271,10 @@ struct GameView: View {
                 .padding(.horizontal, 10)
                 .padding(.vertical, 4)
                 .background(Color.orange.opacity(0.18), in: .capsule)
-                .padding(.trailing, 20)
-                .padding(.top, 8)
                 .id(bonusToastID)
                 .transition(reduceMotion
                     ? .opacity
-                    : .move(edge: .top).combined(with: .opacity))
+                    : .move(edge: .trailing).combined(with: .opacity))
                 .accessibilityLabel("Plus \(seconds) seconds bonus")
                 .task(id: bonusToastID) {
                     try? await Task.sleep(for: .milliseconds(900))
@@ -431,13 +430,6 @@ struct GameView: View {
                         startNewGame()
                     }
                 }
-            }
-            if mode.allowsDealThree {
-                Button("Deal 3", systemImage: "plus.rectangle.on.rectangle") {
-                    Task { await runDealThreeAnimation() }
-                }
-                .disabled(!game.canDealThree)
-                .accessibilityHint(game.canDealThree ? "" : "Find the visible trio first")
             }
             if mode.allowsHint {
                 Button("Hint", systemImage: "lightbulb") {

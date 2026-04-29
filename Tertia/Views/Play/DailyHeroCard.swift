@@ -92,7 +92,7 @@ struct DailyHeroCard: View {
                         .foregroundStyle(.primary)
                 }
             } else {
-                Text("Same puzzle for everyone today. 90 seconds.")
+                Text("Same puzzle for everyone today. Find every set.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }

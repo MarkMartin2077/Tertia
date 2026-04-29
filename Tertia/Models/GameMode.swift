@@ -57,22 +57,22 @@ nonisolated enum GameMode: String, CaseIterable, Identifiable, Codable {
 
     var allowsHint: Bool {
         switch self {
-        case .practice, .normal: return true
-        case .timeAttack, .daily: return false
+        case .practice, .normal, .daily: return true
+        case .timeAttack: return false
         }
     }
 
     var allowsDealThree: Bool {
         switch self {
-        case .practice, .normal: return true
-        case .timeAttack, .daily: return false
+        case .practice, .normal, .daily: return true
+        case .timeAttack: return false
         }
     }
 
     var usesTimer: Bool {
         switch self {
-        case .practice, .normal: return false
-        case .timeAttack, .daily: return true
+        case .practice, .normal, .daily: return false
+        case .timeAttack: return true
         }
     }
 
@@ -84,8 +84,8 @@ nonisolated enum GameMode: String, CaseIterable, Identifiable, Codable {
 
     var awardsTimeBonus: Bool {
         switch self {
-        case .practice, .normal: return false
-        case .timeAttack, .daily: return true
+        case .practice, .normal, .daily: return false
+        case .timeAttack: return true
         }
     }
 }

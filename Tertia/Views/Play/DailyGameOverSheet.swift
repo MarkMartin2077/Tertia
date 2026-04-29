@@ -25,7 +25,7 @@ struct DailyGameOverSheet: View {
     private var shareText: String {
         var lines = [
             "🟪 Tertia Daily — \(dateText)",
-            "🎯 \(score) \(score == 1 ? "trio" : "trios") in 90s"
+            "🎯 \(score) \(score == 1 ? "trio" : "trios")"
         ]
         if streak > 1 {
             lines.append("🔥 \(streak)-day streak")
