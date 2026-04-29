@@ -11,7 +11,7 @@ struct OnboardingView: View {
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     @State private var slideIndex = 0
 
-    private let totalSlides = 5
+    private let totalSlides = 6
 
     var body: some View {
         VStack(spacing: 0) {
@@ -31,7 +31,8 @@ struct OnboardingView: View {
                 RuleSlide().tag(1)
                 ValidSetsSlide().tag(2)
                 NonSetsSlide().tag(3)
-                ReadySlide(onStart: complete).tag(4)
+                ScoringSlide().tag(4)
+                ReadySlide(onStart: complete).tag(5)
             }
             .tabViewStyle(.page(indexDisplayMode: .always))
             .indexViewStyle(.page(backgroundDisplayMode: .always))
@@ -196,6 +197,66 @@ private struct NonSetsSlide: View {
             .padding(.bottom, 24)
         }
         .scrollBounceBehavior(.basedOnSize)
+    }
+}
+
+private struct ScoringSlide: View {
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 16) {
+                Text("Harder Trios = More Points")
+                    .font(.largeTitle.bold())
+                    .multilineTextAlignment(.center)
+                    .padding(.top, 24)
+
+                Text(.init("Each trio is worth **1 to 4 base points** — one for every attribute that's all-different across the three cards. Spot the wild ones, score the most."))
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 28)
+
+                VStack(spacing: 14) {
+                    pointsRow(points: 1, cards: ExampleData.oneAttributeDifferentSet,
+                              label: "Three attributes match — only one varies.")
+                    pointsRow(points: 2, cards: ExampleData.mixedSet,
+                              label: "Two attributes vary, two match.")
+                    pointsRow(points: 4, cards: ExampleData.allDifferentSet,
+                              label: "Every attribute is all-different. Maximum difficulty.")
+                }
+                .padding(.horizontal, 24)
+
+                Label {
+                    Text(.init("**Combos stack on top.** Land a trio within 5 seconds of the last and your multiplier climbs to ×2 then ×3 — applied to the base points."))
+                } icon: {
+                    Image(systemName: "flame.fill").foregroundStyle(.orange)
+                }
+                .font(.footnote)
+                .padding(.horizontal, 28)
+                .padding(.top, 4)
+            }
+            .padding(.bottom, 24)
+        }
+        .scrollBounceBehavior(.basedOnSize)
+    }
+
+    private func pointsRow(points: Int, cards: [SetCard], label: String) -> some View {
+        HStack(spacing: 12) {
+            Text("+\(points)")
+                .font(.title2.bold())
+                .monospacedDigit()
+                .foregroundStyle(.green)
+                .frame(width: 44, alignment: .leading)
+            HStack(spacing: 6) {
+                ForEach(cards) { card in
+                    ExampleCard(card: card)
+                        .frame(width: 44, height: 44)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 6)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Worth \(points) points: \(label)")
     }
 }
 

@@ -48,6 +48,21 @@ nonisolated struct SetExplanation: Equatable {
     func outcome(for attribute: CardAttribute) -> AttributeOutcome? {
         analyses.first { $0.attribute == attribute }?.outcome
     }
+
+    /// Number of attributes that are all-different across the trio. For a
+    /// valid trio this is in 1...4 (zero is impossible — would require three
+    /// identical cards, which the deck doesn't contain). For an invalid trio
+    /// this counts only the attributes that didn't fail.
+    var allDifferentCount: Int {
+        analyses.filter { $0.outcome == .allDifferent }.count
+    }
+
+    /// Base points awarded for finding this trio. Equal to the number of
+    /// all-different attributes — harder-to-spot trios score more. Returns
+    /// 0 for invalid trios so callers can rely on it.
+    var difficultyPoints: Int {
+        isSet ? allDifferentCount : 0
+    }
 }
 
 /// User-facing concrete description of a single attribute across a 3-card trio,

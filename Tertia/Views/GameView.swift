@@ -41,6 +41,10 @@ struct GameView: View {
     @State private var bonusToastSeconds: Int? = nil
     @State private var bonusToastID: Int = 0
 
+    // Points toast — fires on every scoring trio, anchored right of the score chip.
+    @State private var pointsToastValue: Int? = nil
+    @State private var pointsToastID: Int = 0
+
     /// Seconds of inactivity before the practice halo offers a hint.
     private let practiceHintDelay: TimeInterval = 25
 
@@ -167,6 +171,8 @@ struct GameView: View {
             .onChange(of: game.score) { oldValue, newValue in
                 guard newValue > oldValue else { return }
                 feedback.validSet()
+                pointsToastValue = newValue - oldValue
+                pointsToastID += 1
                 if mode.awardsTimeBonus, let controller {
                     let added = controller.addTime(controller.perSetBonus)
                     if added > 0 {
@@ -217,6 +223,10 @@ struct GameView: View {
     private var headerRow: some View {
         HStack(alignment: .firstTextBaseline) {
             scoreChip
+                .overlay(alignment: .trailing) {
+                    pointsToast
+                        .alignmentGuide(.trailing) { d in d[.leading] - 8 }
+                }
             Spacer()
 
             if mode.usesTimer, let controller {
@@ -260,6 +270,29 @@ struct GameView: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Score \(game.score)")
         .accessibilityValue(comboActive ? "Combo multiplier ×\(game.multiplier)" : "")
+    }
+
+    @ViewBuilder
+    private var pointsToast: some View {
+        if let value = pointsToastValue {
+            Text("+\(value)")
+                .font(.title3.bold())
+                .foregroundStyle(.green)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .background(Color.green.opacity(0.18), in: .capsule)
+                .id(pointsToastID)
+                .transition(reduceMotion
+                    ? .opacity
+                    : .move(edge: .leading).combined(with: .opacity))
+                .accessibilityLabel("Plus \(value) points")
+                .task(id: pointsToastID) {
+                    try? await Task.sleep(for: .milliseconds(900))
+                    withAnimation(.easeOut(duration: 0.3)) {
+                        pointsToastValue = nil
+                    }
+                }
+        }
     }
 
     @ViewBuilder

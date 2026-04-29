@@ -135,7 +135,8 @@ struct SetGameTests {
 
         for c in Self.validSet { game.select(c) }
 
-        #expect(game.score == 1)
+        // validSet is all-different on all 4 attributes → 4 base points.
+        #expect(game.score == 4)
         #expect(game.selectedCards.isEmpty)
         for c in Self.validSet {
             #expect(!game.boardSlots.contains(c))
@@ -158,7 +159,7 @@ struct SetGameTests {
         let game = SetGame()
         for (i, c) in Self.validSet.enumerated() { game.boardSlots[i] = c }
         for c in Self.validSet { game.select(c) }
-        #expect(game.score == 1)
+        #expect(game.score == 4)
 
         game.newGame()
 
@@ -281,7 +282,8 @@ struct SetGameTests {
 
         game.acknowledgeSelection()
 
-        #expect(game.score == 1)
+        // validSet is all-different on all 4 attributes → 4 base points.
+        #expect(game.score == 4)
         #expect(game.selectedCards.isEmpty)
         for c in Self.validSet {
             #expect(!game.boardSlots.contains(c))
@@ -338,15 +340,17 @@ struct SetGameTests {
 
         for (i, c) in Self.validSet.enumerated() { game.boardSlots[i] = c }
         for c in Self.validSet { game.select(c, now: t0) }
-        #expect(game.score == 1)
+        // 4 base × ×1 = 4
+        #expect(game.score == 4)
         #expect(game.multiplier == 1)
 
         for (i, c) in Self.validSet2.enumerated() { game.boardSlots[i] = c }
         let t1 = t0.addingTimeInterval(4)
         for c in Self.validSet2 { game.select(c, now: t1) }
 
+        // 4 base × ×2 = 8 added → 12 total
         #expect(game.multiplier == 2)
-        #expect(game.score == 1 + 2)
+        #expect(game.score == 4 + 8)
         #expect(game.longestStreak == 2)
     }
 
@@ -363,8 +367,38 @@ struct SetGameTests {
         let stalled = t0.addingTimeInterval(6)
         for c in Self.validSet2 { game.select(c, now: stalled) }
 
+        // Both are 4-base trios, both score at ×1 due to stall: 4 + 4 = 8
         #expect(game.multiplier == 1)
+        #expect(game.score == 8)
+    }
+
+    // MARK: - Difficulty-weighted scoring
+
+    @Test("One-attribute-different trio scores 1 base point")
+    func difficultyOneScoresOne() {
+        let game = SetGame(mode: .normal)
+        let trio = ExampleData.oneAttributeDifferentSet
+        for (i, c) in trio.enumerated() { game.boardSlots[i] = c }
+        for c in trio { game.select(c) }
+        #expect(game.score == 1)
+    }
+
+    @Test("Two-attributes-different trio scores 2 base points")
+    func difficultyTwoScoresTwo() {
+        let game = SetGame(mode: .normal)
+        let trio = ExampleData.mixedSet // shape & count differ; color & fill same
+        for (i, c) in trio.enumerated() { game.boardSlots[i] = c }
+        for c in trio { game.select(c) }
         #expect(game.score == 2)
+    }
+
+    @Test("Four-attributes-different trio scores 4 base points")
+    func difficultyFourScoresFour() {
+        let game = SetGame(mode: .normal)
+        let trio = ExampleData.allDifferentSet
+        for (i, c) in trio.enumerated() { game.boardSlots[i] = c }
+        for c in trio { game.select(c) }
+        #expect(game.score == 4)
     }
 
     @Test("Multiplier caps at ×3 even with four consecutive sets in window")

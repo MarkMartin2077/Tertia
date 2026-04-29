@@ -61,4 +61,33 @@ struct StatsViewModelTests {
         #expect(top.count == 3)
         #expect(top.map(\.score) == [12, 9, 7])
     }
+
+    @Test("Time-windowed bests filter by today and week")
+    func windowedBests() {
+        let (vm, scores, _) = makeViewModel()
+        let cal = Calendar.current
+        let today = Date()
+        let yesterday = cal.date(byAdding: .day, value: -1, to: today)!
+        let lastMonth = cal.date(byAdding: .day, value: -40, to: today)!
+
+        scores.record(score: 6, durationSeconds: 300, date: today)
+        scores.record(score: 9, durationSeconds: 300, date: yesterday)
+        scores.record(score: 14, durationSeconds: 300, date: lastMonth)
+
+        #expect(vm.timeAttackBest == 14)
+        #expect(vm.timeAttackBestThisWeek == 9)
+        #expect(vm.timeAttackBestToday == 6)
+    }
+
+    @Test("Time-windowed bests are nil when window is empty")
+    func windowedBestsEmpty() {
+        let (vm, scores, _) = makeViewModel()
+        let cal = Calendar.current
+        let lastMonth = cal.date(byAdding: .day, value: -40, to: .now)!
+        scores.record(score: 7, durationSeconds: 300, date: lastMonth)
+
+        #expect(vm.timeAttackBest == 7)
+        #expect(vm.timeAttackBestThisWeek == nil)
+        #expect(vm.timeAttackBestToday == nil)
+    }
 }

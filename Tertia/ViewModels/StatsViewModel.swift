@@ -47,7 +47,23 @@ final class StatsViewModel {
     }
 
     var timeAttackBest: Int? {
-        timeAttackEntries.map(\.score).max()
+        bestScore(in: timeAttackEntries)
+    }
+
+    var timeAttackBestToday: Int? {
+        let calendar = Calendar.current
+        return bestScore(in: timeAttackEntries.filter { calendar.isDateInToday($0.date) })
+    }
+
+    var timeAttackBestThisWeek: Int? {
+        let calendar = Calendar.current
+        return bestScore(in: timeAttackEntries.filter {
+            calendar.isDate($0.date, equalTo: .now, toGranularity: .weekOfYear)
+        })
+    }
+
+    private func bestScore(in entries: [HighScoreEntry]) -> Int? {
+        entries.map(\.score).max()
     }
 
     /// Top-N Time Attack runs, sorted descending by score, for the recent-runs list.

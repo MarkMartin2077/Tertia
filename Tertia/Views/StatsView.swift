@@ -66,25 +66,51 @@ struct StatsView: View {
     }
 
     private func streakSummary(viewModel: StatsViewModel) -> some View {
-        HStack(spacing: 16) {
-            statTile(
-                icon: "flame.fill",
-                tint: .orange,
-                value: "\(viewModel.currentStreak)",
-                label: viewModel.currentStreak == 1 ? "Day streak" : "Day streak"
-            )
-            statTile(
-                icon: "trophy.fill",
-                tint: .yellow,
-                value: "\(viewModel.bestStreak)",
-                label: "Best streak"
-            )
-            if let best = viewModel.timeAttackBest {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 16) {
                 statTile(
-                    icon: "timer",
+                    icon: "flame.fill",
                     tint: .orange,
-                    value: "\(best)",
-                    label: "TA best"
+                    value: "\(viewModel.currentStreak)",
+                    label: "Day streak"
+                )
+                statTile(
+                    icon: "trophy.fill",
+                    tint: .yellow,
+                    value: "\(viewModel.bestStreak)",
+                    label: "Best streak"
+                )
+            }
+
+            if viewModel.hasTimeAttackHistory {
+                bestScoresSection(viewModel: viewModel)
+            }
+        }
+    }
+
+    private func bestScoresSection(viewModel: StatsViewModel) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Time Attack — Best Scores")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.secondary)
+            HStack(spacing: 16) {
+                statTile(
+                    icon: "infinity",
+                    tint: .orange,
+                    value: viewModel.timeAttackBest.map(String.init) ?? "—",
+                    label: "All time"
+                )
+                statTile(
+                    icon: "calendar.badge.clock",
+                    tint: .orange,
+                    value: viewModel.timeAttackBestThisWeek.map(String.init) ?? "—",
+                    label: "This week"
+                )
+                statTile(
+                    icon: "sun.max.fill",
+                    tint: .orange,
+                    value: viewModel.timeAttackBestToday.map(String.init) ?? "—",
+                    label: "Today"
                 )
             }
         }

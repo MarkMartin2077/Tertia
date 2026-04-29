@@ -162,19 +162,21 @@ class SetGame {
 
         selectedCards.insert(card)
 
+        let explanation = explain(Array(selectedCards))
+
         // Third tap completed an invalid trio — non-practice modes break the combo
         // immediately so the user feels the cost of a wrong pick.
         if selectedCards.count == SetGame.setSize,
-           !isSet(Array(selectedCards)),
+           !explanation.isSet,
            mode != .practice {
             multiplier = 1
         }
 
-        guard isSet(Array(selectedCards)) else { return }
+        guard explanation.isSet else { return }
         guard autoResolvesMatch else { return }
 
         registerValidSet(at: now)
-        score += multiplier
+        score += explanation.difficultyPoints * multiplier
         resolveMatchedCards(matching: selectedCards, now: now)
     }
 
@@ -182,9 +184,10 @@ class SetGame {
     /// dismissed. Scores the match (if valid) and refills the board, or just
     /// clears the selection if the trio was invalid.
     func acknowledgeSelection(now: Date = .now) {
-        if isSet(Array(selectedCards)) {
+        let explanation = explain(Array(selectedCards))
+        if explanation.isSet {
             registerValidSet(at: now)
-            score += multiplier
+            score += explanation.difficultyPoints * multiplier
             resolveMatchedCards(matching: selectedCards, now: now)
         } else {
             withAnimation {
