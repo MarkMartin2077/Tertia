@@ -12,7 +12,7 @@ struct StatsView: View {
 
     let onPlayTimeAttack: () -> Void
 
-    private let timeAttackDuration = 90
+    private let timeAttackDuration = 300
 
     private var topScores: [HighScoreEntry] {
         Array(
@@ -43,7 +43,7 @@ struct StatsView: View {
                     StatsRow(rank: index + 1, entry: entry)
                 }
             } header: {
-                Text("Time Attack · 90s")
+                Text("Time Attack · 5 min")
             } footer: {
                 Text("Top \(topScores.count) of your runs.")
             }
@@ -131,9 +131,9 @@ private struct StatsRow: View {
 
 #Preview("Populated") {
     let store = HighScoreStore()
-    store.record(score: 8, durationSeconds: 90, date: .now.addingTimeInterval(-3600))
-    store.record(score: 5, durationSeconds: 90, date: .now.addingTimeInterval(-86400))
-    store.record(score: 3, durationSeconds: 90, date: .now.addingTimeInterval(-86400 * 5))
+    store.record(score: 8, durationSeconds: 300, date: .now.addingTimeInterval(-3600))
+    store.record(score: 5, durationSeconds: 300, date: .now.addingTimeInterval(-86400))
+    store.record(score: 3, durationSeconds: 300, date: .now.addingTimeInterval(-86400 * 5))
     return StatsView(onPlayTimeAttack: {})
         .environment(store)
 }

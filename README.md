@@ -28,7 +28,7 @@ Get instant feedback on every pick. Tertia tells you exactly *why* a trio works 
 The pure experience. Take your time. Use a hint when you're stuck. Deal three more when the board has nothing.
 
 ### ⏱ Time Attack
-**90 seconds. No hints. No safety net.** Every match buys you extra seconds and feeds your **combo multiplier** — chain trios together within the window and watch your score multiply. The board glows orange, the time bonus toasts in, and the clock keeps ticking.
+**Five minutes. No hints. No safety net.** Every match buys you extra seconds and feeds your **combo multiplier** — chain trios together within the window and watch your score multiply. The board glows orange, the time bonus toasts in, and the clock keeps ticking.
 
 ### 📅 Daily Puzzle
 **The same deck for every player, every day.** Solve at your own pace, then share your result. Miss a day and the streak resets — show up tomorrow and it builds again. A "Done" badge tells you when today's solved; come back at midnight for a fresh shuffle.
@@ -41,7 +41,7 @@ The pure experience. Take your time. Use a hint when you're stuck. Deal three mo
 
 **A practice mode that teaches.** Most games tell you you're wrong. Tertia tells you *which attribute* is wrong, every time, in plain English ("two filled, one empty"). After a session of Practice, the rules stop feeling like rules and start feeling like a sense.
 
-**Time bonuses you'll chase.** Time Attack drops you with a 90-second clock, but every match adds seconds. Strong players can extend a run almost indefinitely. The toast pops in next to the timer and the seconds physically tick up — it's the best kind of greedy.
+**Time bonuses you'll chase.** Time Attack drops you with a 5-minute clock, but every match adds seconds. Strong players can extend a run a long way past the buzzer. The toast pops in next to the timer and the seconds physically tick up — it's the best kind of greedy.
 
 **A streak you don't want to break.** The Daily Puzzle remembers. The flame icon sits next to your day count. Tomorrow's puzzle is already waiting.
 

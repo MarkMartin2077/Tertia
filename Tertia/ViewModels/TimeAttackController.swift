@@ -49,7 +49,7 @@ final class TimeAttackController {
         endDate != nil || pausedRemaining != nil
     }
 
-    init(totalDuration: TimeInterval = 90) {
+    init(totalDuration: TimeInterval = 300) {
         self.totalDuration = totalDuration
         // endDate stays nil — call start() to begin the round. Until then,
         // `remaining` reports the full duration and `isPaused` is true.

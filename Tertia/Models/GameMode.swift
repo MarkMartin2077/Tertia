@@ -32,7 +32,7 @@ nonisolated enum GameMode: String, CaseIterable, Identifiable, Codable {
         switch self {
         case .practice: return "Get feedback on every pick to learn the rules through play."
         case .normal: return "The classic experience. Hints available when you need them."
-        case .timeAttack: return "90 seconds. No hints. Score as many sets as you can."
+        case .timeAttack: return "5 minutes. No hints. Score as many sets as you can."
         case .daily: return "Same puzzle for everyone, refreshes daily."
         }
     }
