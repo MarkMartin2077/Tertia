@@ -17,7 +17,7 @@ struct OnboardingView: View {
         VStack(spacing: 0) {
             HStack {
                 Spacer()
-                if slideIndex < totalSlides - 1 {
+                if slideIndex >= 2 && slideIndex < totalSlides - 1 {
                     Button("Skip", action: complete)
                         .padding(.horizontal)
                         .padding(.top, 12)
@@ -73,44 +73,45 @@ private struct WelcomeSlide: View {
 
 private struct RuleSlide: View {
     var body: some View {
-        VStack(spacing: 20) {
-            Spacer()
-            Text("What Makes a Set")
-                .font(.largeTitle.bold())
-                .multilineTextAlignment(.center)
-            Text(.init("Three cards form a set if, for each attribute, the values are **all the same** or **all different**."))
-                .font(.body)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 32)
+        ScrollView {
+            VStack(spacing: 20) {
+                Text("What Makes a Trio")
+                    .font(.largeTitle.bold())
+                    .multilineTextAlignment(.center)
+                Text(.init("Three cards form a trio if, for each attribute, the values are **all the same** or **all different**."))
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 32)
 
-            VStack(alignment: .leading, spacing: 14) {
-                attributeRow(icon: "square.on.circle", name: "Shape", values: "Circle · Square · Triangle")
-                attributeRow(icon: "number", name: "Count", values: "One · Two · Three")
-                attributeRow(icon: "paintpalette", name: "Color", values: "Red · Green · Blue")
-                attributeRow(icon: "drop", name: "Fill", values: "Empty · Half · Filled")
-            }
-            .padding(20)
-            .background(Color.secondary.opacity(0.1), in: .rect(cornerRadius: 16))
-            .padding(.horizontal, 24)
-
-            VStack(alignment: .leading, spacing: 8) {
-                Label {
-                    Text(.init("**Each attribute is checked separately.** A set can be all-same on color and all-different on shape — that's fine."))
-                } icon: {
-                    Image(systemName: "info.circle.fill").foregroundStyle(.tint)
+                VStack(alignment: .leading, spacing: 14) {
+                    attributeRow(icon: "square.on.circle", name: "Shape", values: "Circle · Square · Triangle")
+                    attributeRow(icon: "number", name: "Count", values: "One · Two · Three")
+                    attributeRow(icon: "paintpalette", name: "Color", values: "Red · Green · Blue")
+                    attributeRow(icon: "drop", name: "Fill", values: "Empty · Half · Filled")
                 }
-                Label {
-                    Text(.init("**Quick check:** if you can sort the three into \"two of one, one of another\" on any attribute, it's *not* a set."))
-                } icon: {
-                    Image(systemName: "lightbulb.fill").foregroundStyle(.yellow)
-                }
-            }
-            .font(.footnote)
-            .padding(.horizontal, 28)
+                .padding(20)
+                .background(Color.secondary.opacity(0.1), in: .rect(cornerRadius: 16))
+                .padding(.horizontal, 24)
 
-            Spacer()
+                VStack(alignment: .leading, spacing: 8) {
+                    Label {
+                        Text(.init("**Each attribute is checked separately.** A trio can be all-same on color and all-different on shape — that's fine."))
+                    } icon: {
+                        Image(systemName: "info.circle.fill").foregroundStyle(.tint)
+                    }
+                    Label {
+                        Text(.init("**Quick check:** if you can sort the three into \"two of one, one of another\" on any attribute, it's *not* a trio."))
+                    } icon: {
+                        Image(systemName: "lightbulb.fill").foregroundStyle(.yellow)
+                    }
+                }
+                .font(.footnote)
+                .padding(.horizontal, 28)
+            }
+            .padding(.bottom, 24)
         }
+        .scrollBounceBehavior(.basedOnSize)
     }
 
     private func attributeRow(icon: String, name: String, values: String) -> some View {
@@ -128,69 +129,73 @@ private struct RuleSlide: View {
 
 private struct ValidSetsSlide: View {
     var body: some View {
-        VStack(spacing: 16) {
-            Text("These ARE Sets")
-                .font(.largeTitle.bold())
-                .padding(.top, 24)
+        ScrollView {
+            VStack(spacing: 16) {
+                Text("These ARE Trios")
+                    .font(.largeTitle.bold())
+                    .padding(.top, 24)
 
-            VStack(spacing: 20) {
-                ExampleTrioView(
-                    cards: ExampleData.allSameSet,
-                    isSet: true,
-                    explanation: "All four attributes are the same.",
-                    animateOnAppear: true
-                )
-                ExampleTrioView(
-                    cards: ExampleData.allDifferentSet,
-                    isSet: true,
-                    explanation: "Every attribute is different.",
-                    animateOnAppear: true
-                )
-                ExampleTrioView(
-                    cards: ExampleData.mixedSet,
-                    isSet: true,
-                    explanation: "Different shapes and counts; same color and fill.",
-                    animateOnAppear: true
-                )
+                VStack(spacing: 20) {
+                    ExampleTrioView(
+                        cards: ExampleData.allSameSet,
+                        isSet: true,
+                        explanation: "All four attributes are the same.",
+                        animateOnAppear: true
+                    )
+                    ExampleTrioView(
+                        cards: ExampleData.allDifferentSet,
+                        isSet: true,
+                        explanation: "Every attribute is different.",
+                        animateOnAppear: true
+                    )
+                    ExampleTrioView(
+                        cards: ExampleData.mixedSet,
+                        isSet: true,
+                        explanation: "Different shapes and counts; same color and fill.",
+                        animateOnAppear: true
+                    )
+                }
+                .padding(.horizontal, 24)
             }
-            .padding(.horizontal, 24)
-
-            Spacer()
+            .padding(.bottom, 24)
         }
+        .scrollBounceBehavior(.basedOnSize)
     }
 }
 
 private struct NonSetsSlide: View {
     var body: some View {
-        VStack(spacing: 16) {
-            Text("Not Sets")
-                .font(.largeTitle.bold())
-                .padding(.top, 24)
+        ScrollView {
+            VStack(spacing: 16) {
+                Text("Not Trios")
+                    .font(.largeTitle.bold())
+                    .padding(.top, 24)
 
-            Text(.init("The **\"two of one, one of another\"** trap — the most common beginner mistake."))
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 32)
+                Text(.init("The **\"two of one, one of another\"** trap — the most common beginner mistake."))
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 32)
 
-            VStack(spacing: 28) {
-                ExampleTrioView(
-                    cards: ExampleData.mixedFillNonSet,
-                    isSet: false,
-                    explanation: "Two filled, one empty. Fill breaks the rule.",
-                    animateOnAppear: true
-                )
-                ExampleTrioView(
-                    cards: ExampleData.mixedColorNonSet,
-                    isSet: false,
-                    explanation: "Two red, one green. Color breaks the rule.",
-                    animateOnAppear: true
-                )
+                VStack(spacing: 28) {
+                    ExampleTrioView(
+                        cards: ExampleData.mixedFillNonSet,
+                        isSet: false,
+                        explanation: "Two filled, one empty. Fill breaks the rule.",
+                        animateOnAppear: true
+                    )
+                    ExampleTrioView(
+                        cards: ExampleData.mixedColorNonSet,
+                        isSet: false,
+                        explanation: "Two red, one green. Color breaks the rule.",
+                        animateOnAppear: true
+                    )
+                }
+                .padding(.horizontal, 24)
             }
-            .padding(.horizontal, 24)
-
-            Spacer()
+            .padding(.bottom, 24)
         }
+        .scrollBounceBehavior(.basedOnSize)
     }
 }
 
@@ -205,7 +210,7 @@ private struct ReadySlide: View {
                 .foregroundStyle(.tint)
             Text("You're Ready")
                 .font(.largeTitle.bold())
-            Text("Find sets, score points, beat the deck.")
+            Text("Find trios, score points, beat the deck.")
                 .font(.body)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)

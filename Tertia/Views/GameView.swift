@@ -15,6 +15,8 @@ struct GameView: View {
     @State private var controller: TimeAttackController?
 
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(HighScoreStore.self) private var highScoreStore
     @Environment(DailyStore.self) private var dailyStore
     @Environment(FeedbackService.self) private var feedback
@@ -31,6 +33,24 @@ struct GameView: View {
     @State private var didFireTimerWarning = false
     @State private var hasHandledExpiry = false
 
+    // Practice slow-glow hint
+    @State private var lastInteractionTime: Date = .now
+    @State private var hintedCards: Set<SetCard> = []
+    @State private var haloPulseToken: Int = 0
+
+    // Time bonus toast
+    @State private var bonusToastSeconds: Int? = nil
+    @State private var bonusToastID: Int = 0
+
+    /// Seconds of inactivity before the practice halo offers a hint.
+    private let practiceHintDelay: TimeInterval = 25
+
+    /// Calendar day the active daily puzzle was generated for. Used to guard
+    /// against day-rollover crediting (user opens before midnight, completes
+    /// after — the puzzle is still yesterday's, so the completion shouldn't
+    /// be recorded as today's).
+    private let puzzleDate: Date
+
     let columnCount = 3
     let cardSpacing = 6.0
     var columns: [GridItem] {
@@ -44,9 +64,12 @@ struct GameView: View {
         self.mode = mode
         self.onExit = onExit
 
+        let puzzleDate = Date.now
+        self.puzzleDate = puzzleDate
+
         let deckBuilder: () -> [SetCard]
         if mode == .daily {
-            deckBuilder = { DailyPuzzle.deck(for: .now) }
+            deckBuilder = { DailyPuzzle.deck(for: puzzleDate) }
         } else {
             deckBuilder = SetGame.standardDeck
         }
@@ -72,6 +95,14 @@ struct GameView: View {
         return Set(explain(Array(game.selectedCards)).failingAttributes)
     }
 
+    /// Warm paper-folio tint behind the card grid — gives the cream cards
+    /// a slightly contrasting surface to rest on instead of pure white.
+    private var boardBackground: Color {
+        colorScheme == .dark
+            ? Color(red: 0.075, green: 0.075, blue: 0.090)   // deep slate
+            : Color(red: 0.955, green: 0.940, blue: 0.910)   // paper folio
+    }
+
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
@@ -85,6 +116,7 @@ struct GameView: View {
                     }
                     .animation(.spring(response: 0.45, dampingFraction: 0.78), value: shouldShowDealThreeOverlay)
             }
+            .background(boardBackground.ignoresSafeArea())
             .opacity(showGameOver ? 0.5 : 1.0)
             .blur(radius: showGameOver ? 2 : 0)
             .animation(.default, value: showGameOver)
@@ -106,7 +138,7 @@ struct GameView: View {
             }
             .animation(.spring(response: 0.4, dampingFraction: 0.85), value: shouldShowPracticeVerdict)
             .toolbar { toolbarContent }
-            .alert("No sets on the board", isPresented: $showNoHintAlert) {
+            .alert("No trios on the board", isPresented: $showNoHintAlert) {
                 Button("OK", role: .cancel) {}
             } message: {
                 Text("Tap Deal 3 to add more cards.")
@@ -137,7 +169,19 @@ struct GameView: View {
                 if isOver && !mode.usesTimer { showGameOver = true }
             }
             .onChange(of: game.score) { oldValue, newValue in
-                if newValue > oldValue { feedback.validSet() }
+                guard newValue > oldValue else { return }
+                feedback.validSet()
+                if mode.awardsTimeBonus, let controller {
+                    let added = controller.addTime(controller.perSetBonus)
+                    if added > 0 {
+                        bonusToastSeconds = Int(added)
+                        bonusToastID += 1
+                    }
+                }
+            }
+            .onChange(of: game.boardSlots) { _, _ in
+                // The board changed (Deal 3, refill, etc.) — clear any stale halo.
+                if !hintedCards.isEmpty { hintedCards = [] }
             }
             .onChange(of: game.hasInvalidSelection) { _, isInvalid in
                 if isInvalid {
@@ -153,15 +197,20 @@ struct GameView: View {
                     await runDealAnimation()
                     if game.boardSlots.count >= SetGame.boardSize {
                         hasDealtInitialBoard = true
-                        if mode.usesTimer, let controller, !controller.hasStarted {
+                        // Only start the timer if the scene is active. If the
+                        // user backgrounded mid-deal, handleScenePhase(.active)
+                        // will start it on resume — avoids a one-tick leak.
+                        if mode.usesTimer,
+                           let controller,
+                           !controller.hasStarted,
+                           scenePhase == .active {
                             controller.start()
-                            if scenePhase != .active {
-                                controller.pause()
-                            }
                         }
                     }
                 }
-                await runTimerWatcher()
+                async let timer: Void = runTimerWatcher()
+                async let hint: Void = runHintWatcher()
+                _ = await (timer, hint)
             }
             .sheet(isPresented: $showGameOver) { gameOverSheet }
         }
@@ -171,8 +220,7 @@ struct GameView: View {
 
     private var headerRow: some View {
         HStack(alignment: .firstTextBaseline) {
-            Text("Score: \(game.score)")
-                .font(.largeTitle.bold())
+            scoreChip
             Spacer()
 
             if mode.usesTimer, let controller {
@@ -188,6 +236,54 @@ struct GameView: View {
         .padding(.horizontal, 20)
         .padding(.top, 8)
         .padding(.bottom, 16)
+        .overlay(alignment: .topTrailing) { bonusToast }
+    }
+
+    private var scoreChip: some View {
+        let comboActive = game.multiplier > 1
+        return HStack(spacing: 6) {
+            Text("Score: \(game.score)")
+                .font(.largeTitle.bold())
+                .contentTransition(.numericText())
+            if comboActive {
+                Text("×\(game.multiplier)")
+                    .font(.title3.bold())
+                    .foregroundStyle(.orange)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 2)
+                    .background(Color.orange.opacity(0.18), in: .capsule)
+                    .transition(.scale.combined(with: .opacity))
+            }
+        }
+        .animation(.easeInOut(duration: 0.25), value: game.multiplier)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Score \(game.score)")
+        .accessibilityValue(comboActive ? "Combo multiplier ×\(game.multiplier)" : "")
+    }
+
+    @ViewBuilder
+    private var bonusToast: some View {
+        if let seconds = bonusToastSeconds {
+            Text("+\(seconds)s")
+                .font(.headline.bold())
+                .foregroundStyle(.orange)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .background(Color.orange.opacity(0.18), in: .capsule)
+                .padding(.trailing, 20)
+                .padding(.top, 8)
+                .id(bonusToastID)
+                .transition(reduceMotion
+                    ? .opacity
+                    : .move(edge: .top).combined(with: .opacity))
+                .accessibilityLabel("Plus \(seconds) seconds bonus")
+                .task(id: bonusToastID) {
+                    try? await Task.sleep(for: .milliseconds(900))
+                    withAnimation(.easeOut(duration: 0.3)) {
+                        bonusToastSeconds = nil
+                    }
+                }
+        }
     }
 
     private var dealThreeOverlay: some View {
@@ -200,7 +296,7 @@ struct GameView: View {
                     Text("DEAL 3")
                         .font(.title2.weight(.heavy))
                         .tracking(2)
-                    Text("No set on this board")
+                    Text("No trio on this board")
                         .font(.caption.weight(.medium))
                         .opacity(0.8)
                 }
@@ -210,33 +306,29 @@ struct GameView: View {
             .padding(.vertical, 16)
             .background(
                 RoundedRectangle(cornerRadius: 18)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                Color(red: 0.20, green: 0.24, blue: 0.34),
-                                Color(red: 0.09, green: 0.11, blue: 0.18)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
+                    .fill(mode.accentColor.gradient)
             )
             .overlay {
                 RoundedRectangle(cornerRadius: 18)
-                    .strokeBorder(.white.opacity(0.18), lineWidth: 1)
+                    .strokeBorder(.white.opacity(0.22), lineWidth: 1)
             }
-            .shadow(color: .black.opacity(0.45), radius: 16, y: 6)
+            .shadow(color: mode.accentColor.opacity(0.35), radius: 14, y: 6)
             .scaleEffect(dealOverlayPulse ? 1.04 : 1.0)
             .animation(
-                .easeInOut(duration: 1.1).repeatForever(autoreverses: true),
+                reduceMotion
+                    ? nil
+                    : .easeInOut(duration: 1.1).repeatCount(3, autoreverses: true),
                 value: dealOverlayPulse
             )
         }
         .buttonStyle(.plain)
-        .onAppear { dealOverlayPulse = true }
+        .onAppear {
+            guard !reduceMotion else { return }
+            dealOverlayPulse = true
+        }
         .onDisappear { dealOverlayPulse = false }
         .accessibilityLabel("Deal three more cards")
-        .accessibilityHint("No set is on the board. Tap to add three more cards.")
+        .accessibilityHint("No trio is on the board. Tap to add three more cards.")
     }
 
     private var fannedCardsIcon: some View {
@@ -287,18 +379,36 @@ struct GameView: View {
                         isSelected: game.selectedCards.contains(card),
                         isInvalid: inInvalidTrio,
                         pulsingAttributes: inInvalidTrio ? currentFailingAttributes : [],
-                        pulseToken: pulseToken
+                        pulseToken: pulseToken,
+                        isHaloed: hintedCards.contains(card),
+                        haloPulseToken: haloPulseToken
                     ) {
                         feedback.cardTap()
+                        lastInteractionTime = .now
+                        if !hintedCards.isEmpty { hintedCards = [] }
                         game.select(card)
                     }
                     .frame(height: cellHeight)
-                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .top).combined(with: .opacity),
+                        removal: .scale.combined(with: .opacity)
+                    ))
                 }
             }
             .padding(.horizontal, 20)
         }
         .padding(.bottom, 24)
+        .overlay { boardEdgeGlow.allowsHitTesting(false) }
+    }
+
+    private var boardEdgeGlow: some View {
+        let active = game.multiplier >= 2
+        return RoundedRectangle(cornerRadius: 24)
+            .strokeBorder(Color.orange.opacity(active ? 0.35 : 0), lineWidth: 3)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .blur(radius: 4)
+            .animation(.easeInOut(duration: 0.4), value: game.multiplier)
     }
 
     @ToolbarContentBuilder
@@ -327,7 +437,7 @@ struct GameView: View {
                     Task { await runDealThreeAnimation() }
                 }
                 .disabled(!game.canDealThree)
-                .accessibilityHint(game.canDealThree ? "" : "Find the visible set first")
+                .accessibilityHint(game.canDealThree ? "" : "Find the visible trio first")
             }
             if mode.allowsHint {
                 Button("Hint", systemImage: "lightbulb") {
@@ -347,6 +457,8 @@ struct GameView: View {
                 date: .now,
                 score: game.score,
                 streak: dailyStore.displayedStreak,
+                fastestSetSeconds: game.fastestSetSeconds,
+                longestStreak: game.longestStreak >= 2 ? game.longestStreak : nil,
                 onChangeMode: {
                     showGameOver = false
                     onExit()
@@ -359,6 +471,8 @@ struct GameView: View {
                 score: game.score,
                 bestScore: highScoreStore.bestScore(forDuration: Int(controller?.totalDuration ?? 0)),
                 isNewBest: wasNewBest,
+                fastestSetSeconds: game.fastestSetSeconds,
+                longestStreak: game.longestStreak >= 2 ? game.longestStreak : nil,
                 onPlayAgain: {
                     showGameOver = false
                     startNewGame()
@@ -429,7 +543,13 @@ struct GameView: View {
         guard mode.usesTimer, let controller else { return }
         switch phase {
         case .active:
-            controller.resume()
+            // If the user backgrounded mid-deal, the .task block skipped the
+            // initial start() — kick it off now that we're foregrounded.
+            if hasDealtInitialBoard, !controller.hasStarted {
+                controller.start()
+            } else {
+                controller.resume()
+            }
         case .background, .inactive:
             controller.pause()
         @unknown default:
@@ -446,7 +566,11 @@ struct GameView: View {
 
         switch mode {
         case .daily:
-            dailyStore.recordCompletion(score: finalScore)
+            // Only credit the streak if the puzzle's day still matches today.
+            // Guards against opening before midnight and finishing after.
+            if Calendar.current.isDateInToday(puzzleDate) {
+                dailyStore.recordCompletion(score: finalScore)
+            }
         case .timeAttack:
             let priorBest = highScoreStore.bestScore(forDuration: duration) ?? 0
             wasNewBest = finalScore > priorBest && finalScore > 0
@@ -465,8 +589,15 @@ struct GameView: View {
 
     private func runTimerWatcher() async {
         guard mode.usesTimer, let controller else { return }
-        // Don't watch until the controller has actually started (deal animation
-        // gates start). Otherwise we'd race expiry against the deal.
+        // Contract: callers must ensure the controller has started. The .task
+        // in `body` does this after the deal animation completes; if the scene
+        // was inactive at that moment, handleScenePhase(.active) starts it on
+        // resume. If we get here without a started controller, the watcher is
+        // a no-op and a foreground transition will trigger a new task.
+        assert(
+            controller.hasStarted || scenePhase != .active,
+            "runTimerWatcher reached while active but controller never started"
+        )
         guard controller.hasStarted else { return }
         while !controller.isFinished {
             if !didFireTimerWarning && controller.remaining <= 10 && !controller.isPaused {
@@ -481,6 +612,31 @@ struct GameView: View {
         }
         if !Task.isCancelled {
             handleTimerExpiry()
+        }
+    }
+
+    /// Practice-only: after the configured idle delay, surface two cards from
+    /// any valid trio as a passive halo. Re-checks every second and dismisses
+    /// itself when the user taps anything (handled in the card-tap closure)
+    /// or the board changes (`onChange(of: game.boardSlots)`).
+    private func runHintWatcher() async {
+        guard mode == .practice else { return }
+        while !Task.isCancelled {
+            do {
+                try await Task.sleep(for: .seconds(1))
+            } catch {
+                return
+            }
+            guard hintedCards.isEmpty else { continue }
+            guard !game.hasInvalidSelection else { continue }
+            guard game.selectedCards.isEmpty else { continue }
+            guard game.isGameOver == false else { continue }
+            let elapsed = Date.now.timeIntervalSince(lastInteractionTime)
+            guard elapsed >= practiceHintDelay else { continue }
+            if let trio = game.findSetOnBoard() {
+                hintedCards = Set(trio.prefix(2))
+                haloPulseToken += 1
+            }
         }
     }
 }

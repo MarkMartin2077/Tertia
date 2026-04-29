@@ -9,7 +9,7 @@ import SwiftUI
 
 struct DailyHeroCard: View {
     enum Status {
-        case ready
+        case ready(streak: Int)
         case completed(score: Int, streak: Int, shareText: String)
     }
 
@@ -82,13 +82,23 @@ struct DailyHeroCard: View {
     @ViewBuilder
     private var subtitleArea: some View {
         switch status {
-        case .ready:
-            Text("Same puzzle for everyone today. 90 seconds.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+        case .ready(let streak):
+            if streak > 0 {
+                HStack(spacing: 6) {
+                    Image(systemName: "flame.fill")
+                        .foregroundStyle(.orange)
+                    Text("Keep your \(streak)-day streak alive")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                }
+            } else {
+                Text("Same puzzle for everyone today. 90 seconds.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
         case .completed(let score, let streak, _):
             HStack(spacing: 20) {
-                statBlock(value: "\(score)", label: score == 1 ? "Set" : "Sets")
+                statBlock(value: "\(score)", label: score == 1 ? "Trio" : "Trios")
                 if streak > 0 {
                     statBlock(value: "\(streak)", label: streak == 1 ? "Day" : "Days", icon: "flame.fill", iconColor: .orange)
                 }
@@ -137,10 +147,19 @@ struct DailyHeroCard: View {
     }
 }
 
-#Preview("Ready") {
+#Preview("Ready — no streak") {
     DailyHeroCard(
         dateText: "Apr 29",
-        status: .ready,
+        status: .ready(streak: 0),
+        onPlay: {}
+    )
+    .padding()
+}
+
+#Preview("Ready — with streak") {
+    DailyHeroCard(
+        dateText: "Apr 29",
+        status: .ready(streak: 3),
         onPlay: {}
     )
     .padding()
@@ -149,7 +168,7 @@ struct DailyHeroCard: View {
 #Preview("Completed") {
     DailyHeroCard(
         dateText: "Apr 29",
-        status: .completed(score: 8, streak: 5, shareText: "Tertia Daily — 8 sets"),
+        status: .completed(score: 8, streak: 5, shareText: "Tertia Daily — 8 trios"),
         onPlay: {}
     )
     .padding()

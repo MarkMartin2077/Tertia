@@ -68,8 +68,12 @@ nonisolated func describe(_ cards: [SetCard], attribute: CardAttribute) -> Strin
         case 3:
             return "all different"
         default:
-            let majority = counts.first(where: { $0.value == 2 })!.key
-            let minority = counts.first(where: { $0.value == 1 })!.key
+            guard
+                let majority = counts.first(where: { $0.value == 2 })?.key,
+                let minority = counts.first(where: { $0.value == 1 })?.key
+            else {
+                return "mixed"
+            }
             return "two \(plural(majority)), one \(name(minority))"
         }
     }

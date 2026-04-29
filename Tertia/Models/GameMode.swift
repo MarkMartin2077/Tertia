@@ -75,4 +75,17 @@ nonisolated enum GameMode: String, CaseIterable, Identifiable, Codable {
         case .timeAttack, .daily: return true
         }
     }
+
+    var tracksCombo: Bool {
+        switch self {
+        case .practice, .normal, .timeAttack, .daily: return true
+        }
+    }
+
+    var awardsTimeBonus: Bool {
+        switch self {
+        case .practice, .normal: return false
+        case .timeAttack, .daily: return true
+        }
+    }
 }

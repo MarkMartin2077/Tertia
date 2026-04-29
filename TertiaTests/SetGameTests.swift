@@ -6,6 +6,7 @@
 //
 
 import Testing
+import Foundation
 @testable import Tertia
 
 @Suite("SetGame")
@@ -23,6 +24,14 @@ struct SetGameTests {
         SetCard(shape: .circle, count: .one, color: .red, fill: .filled),
         SetCard(shape: .circle, count: .one, color: .red, fill: .filled),
         SetCard(shape: .circle, count: .one, color: .red, fill: .empty)
+    ]
+
+    /// A second valid trio with different cards so we can chain matches in tests.
+    /// All four attributes are all-different (different from `validSet`).
+    private static let validSet2: [SetCard] = [
+        SetCard(shape: .circle, count: .one, color: .green, fill: .empty),
+        SetCard(shape: .square, count: .two, color: .blue, fill: .filled),
+        SetCard(shape: .triangle, count: .three, color: .red, fill: .rightHalf)
     ]
 
     // MARK: - Fresh game state
@@ -244,6 +253,57 @@ struct SetGameTests {
         #expect(game.deck.count == deckBefore)
     }
 
+    // MARK: - Practice mode / acknowledgeSelection
+
+    @Test("Practice mode retains selection after select() until acknowledged")
+    func practiceModeRetainsSelectionUntilAcknowledged() {
+        let game = SetGame(mode: .practice)
+        for (i, c) in Self.validSet.enumerated() { game.boardSlots[i] = c }
+
+        // Select the first two cards manually, then call select() for the third.
+        game.selectedCards = Set(Self.validSet.prefix(2))
+        game.select(Self.validSet[2])
+
+        // autoResolvesMatch is false for practice — the trio must still be selected.
+        #expect(game.selectedCards.count == 3)
+        #expect(game.score == 0)
+        // The matched cards are still on the board.
+        for c in Self.validSet {
+            #expect(game.boardSlots.contains(c))
+        }
+    }
+
+    @Test("acknowledgeSelection scores a valid trio and clears it from the board")
+    func practiceAcknowledgeValidSetIncrementsScore() {
+        let game = SetGame(mode: .practice)
+        for (i, c) in Self.validSet.enumerated() { game.boardSlots[i] = c }
+        game.selectedCards = Set(Self.validSet)
+
+        game.acknowledgeSelection()
+
+        #expect(game.score == 1)
+        #expect(game.selectedCards.isEmpty)
+        for c in Self.validSet {
+            #expect(!game.boardSlots.contains(c))
+        }
+    }
+
+    @Test("acknowledgeSelection clears an invalid trio without scoring or removing cards")
+    func practiceAcknowledgeInvalidTrioClearsWithoutScoring() {
+        let game = SetGame(mode: .practice)
+        for (i, c) in Self.invalidTrio.enumerated() { game.boardSlots[i] = c }
+        game.selectedCards = Set(Self.invalidTrio)
+
+        game.acknowledgeSelection()
+
+        #expect(game.score == 0)
+        #expect(game.selectedCards.isEmpty)
+        // The three cards must still be on the board — no removal on an invalid trio.
+        for c in Self.invalidTrio {
+            #expect(game.boardSlots.contains(c))
+        }
+    }
+
     // MARK: - isGameOver
 
     @Test("isGameOver is false on a fresh game")
@@ -266,5 +326,148 @@ struct SetGameTests {
         game.deck = []
         game.boardSlots = Self.validSet
         #expect(!game.isGameOver)
+    }
+
+    // MARK: - Combo + session stats
+
+    @Test("Two valid trios within the combo window activate ×2")
+    func comboActivatesWithinFiveSeconds() {
+        let game = SetGame(mode: .normal)
+        let t0 = Date()
+        game.newGame(now: t0)
+
+        for (i, c) in Self.validSet.enumerated() { game.boardSlots[i] = c }
+        for c in Self.validSet { game.select(c, now: t0) }
+        #expect(game.score == 1)
+        #expect(game.multiplier == 1)
+
+        for (i, c) in Self.validSet2.enumerated() { game.boardSlots[i] = c }
+        let t1 = t0.addingTimeInterval(4)
+        for c in Self.validSet2 { game.select(c, now: t1) }
+
+        #expect(game.multiplier == 2)
+        #expect(game.score == 1 + 2)
+        #expect(game.longestStreak == 2)
+    }
+
+    @Test("A stall outside the combo window resets multiplier to ×1")
+    func comboResetsAfterStall() {
+        let game = SetGame(mode: .normal)
+        let t0 = Date()
+        game.newGame(now: t0)
+
+        for (i, c) in Self.validSet.enumerated() { game.boardSlots[i] = c }
+        for c in Self.validSet { game.select(c, now: t0) }
+
+        for (i, c) in Self.validSet2.enumerated() { game.boardSlots[i] = c }
+        let stalled = t0.addingTimeInterval(6)
+        for c in Self.validSet2 { game.select(c, now: stalled) }
+
+        #expect(game.multiplier == 1)
+        #expect(game.score == 2)
+    }
+
+    @Test("Multiplier caps at ×3 even with four consecutive sets in window")
+    func comboCapsAtThree() {
+        let game = SetGame(mode: .normal)
+        let t0 = Date()
+        game.newGame(now: t0)
+
+        // Four consecutive matches within the window. We only need two distinct
+        // valid trios — alternating works because each match clears the slots.
+        let trios = [Self.validSet, Self.validSet2, Self.validSet, Self.validSet2]
+        var t = t0
+        for trio in trios {
+            for (i, c) in trio.enumerated() { game.boardSlots[i] = c }
+            for c in trio { game.select(c, now: t) }
+            t = t.addingTimeInterval(2)
+        }
+
+        #expect(game.multiplier == 3)
+        #expect(game.longestStreak == 3)
+    }
+
+    @Test("fastestSetSeconds tracks the shortest solve in the session")
+    func fastestSetTracksMinimum() {
+        let game = SetGame(mode: .normal)
+        let t0 = Date()
+        game.newGame(now: t0)
+
+        for (i, c) in Self.validSet.enumerated() { game.boardSlots[i] = c }
+        let firstAt = t0.addingTimeInterval(8)
+        for c in Self.validSet { game.select(c, now: firstAt) }
+        #expect(game.fastestSetSeconds == 8)
+
+        for (i, c) in Self.validSet2.enumerated() { game.boardSlots[i] = c }
+        let secondAt = firstAt.addingTimeInterval(3)
+        for c in Self.validSet2 { game.select(c, now: secondAt) }
+
+        #expect(game.fastestSetSeconds == 3)
+    }
+
+    @Test("Invalid trio in normal mode resets the active combo")
+    func invalidTrioResetsComboInNormalMode() {
+        let game = SetGame(mode: .normal)
+        let t0 = Date()
+        game.newGame(now: t0)
+
+        // Build combo to ×2.
+        for (i, c) in Self.validSet.enumerated() { game.boardSlots[i] = c }
+        for c in Self.validSet { game.select(c, now: t0) }
+        for (i, c) in Self.validSet2.enumerated() { game.boardSlots[i] = c }
+        for c in Self.validSet2 { game.select(c, now: t0.addingTimeInterval(2)) }
+        #expect(game.multiplier == 2)
+
+        // Plant invalid trio and complete the third tap.
+        for (i, c) in Self.invalidTrio.enumerated() { game.boardSlots[i] = c }
+        for c in Self.invalidTrio { game.select(c, now: t0.addingTimeInterval(3)) }
+
+        #expect(game.multiplier == 1)
+    }
+
+    @Test("Invalid trio in practice mode preserves the active combo")
+    func practiceDoesNotResetComboOnInvalid() {
+        let game = SetGame(mode: .practice)
+        let t0 = Date()
+        game.newGame(now: t0)
+
+        // Build practice combo to ×2 via acknowledgeSelection.
+        for (i, c) in Self.validSet.enumerated() { game.boardSlots[i] = c }
+        game.selectedCards = Set(Self.validSet)
+        game.acknowledgeSelection(now: t0)
+
+        for (i, c) in Self.validSet2.enumerated() { game.boardSlots[i] = c }
+        game.selectedCards = Set(Self.validSet2)
+        game.acknowledgeSelection(now: t0.addingTimeInterval(2))
+        #expect(game.multiplier == 2)
+
+        // Plant invalid trio in practice — combo should not reset.
+        for (i, c) in Self.invalidTrio.enumerated() { game.boardSlots[i] = c }
+        for c in Self.invalidTrio { game.select(c, now: t0.addingTimeInterval(3)) }
+
+        #expect(game.multiplier == 2)
+    }
+
+    @Test("newGame clears all combo and stats state")
+    func newGameClearsAllSessionState() {
+        let game = SetGame(mode: .normal)
+        let t0 = Date()
+        game.newGame(now: t0)
+
+        // Build some state.
+        for (i, c) in Self.validSet.enumerated() { game.boardSlots[i] = c }
+        for c in Self.validSet { game.select(c, now: t0) }
+        for (i, c) in Self.validSet2.enumerated() { game.boardSlots[i] = c }
+        for c in Self.validSet2 { game.select(c, now: t0.addingTimeInterval(2)) }
+        #expect(game.multiplier == 2)
+        #expect(game.longestStreak == 2)
+        #expect(game.fastestSetSeconds != nil)
+
+        game.newGame()
+
+        #expect(game.multiplier == 1)
+        #expect(game.longestStreak == 0)
+        #expect(game.fastestSetSeconds == nil)
+        #expect(game.score == 0)
     }
 }

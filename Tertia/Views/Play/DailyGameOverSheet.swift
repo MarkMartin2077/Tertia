@@ -12,6 +12,8 @@ struct DailyGameOverSheet: View {
     let date: Date
     let score: Int
     let streak: Int
+    var fastestSetSeconds: Double? = nil
+    var longestStreak: Int? = nil
     let onChangeMode: () -> Void
 
     private var dateText: String {
@@ -23,7 +25,7 @@ struct DailyGameOverSheet: View {
     private var shareText: String {
         var lines = [
             "🟪 Tertia Daily — \(dateText)",
-            "🎯 \(score) \(score == 1 ? "set" : "sets") in 90s"
+            "🎯 \(score) \(score == 1 ? "trio" : "trios") in 90s"
         ]
         if streak > 1 {
             lines.append("🔥 \(streak)-day streak")
@@ -36,7 +38,7 @@ struct DailyGameOverSheet: View {
             VStack(spacing: 8) {
                 Text("Today's Puzzle")
                     .font(.largeTitle.bold())
-                Text("You found \(score) \(score == 1 ? "set" : "sets")")
+                Text("You found \(score) \(score == 1 ? "trio" : "trios")")
                     .font(.title3)
                     .foregroundStyle(.secondary)
 
@@ -52,6 +54,9 @@ struct DailyGameOverSheet: View {
                     .padding(.vertical, 6)
                     .background(Color.orange.opacity(0.15), in: .capsule)
                 }
+
+                statsBadges
+                    .padding(.top, 8)
             }
 
             VStack(spacing: 12) {
@@ -81,9 +86,45 @@ struct DailyGameOverSheet: View {
         .onAppear {
             UIAccessibility.post(
                 notification: .announcement,
-                argument: "Today's puzzle complete. You found \(score) \(score == 1 ? "set" : "sets")."
+                argument: "Today's puzzle complete. You found \(score) \(score == 1 ? "trio" : "trios")."
             )
         }
+    }
+
+    @ViewBuilder
+    private var statsBadges: some View {
+        HStack(spacing: 8) {
+            if let seconds = fastestSetSeconds {
+                statBadge(
+                    icon: "bolt.fill",
+                    iconColor: .yellow,
+                    text: String(format: "%.1fs fastest", seconds),
+                    accessibility: "Fastest trio: \(String(format: "%.1f", seconds)) seconds"
+                )
+            }
+            if let streak = longestStreak {
+                statBadge(
+                    icon: "flame.fill",
+                    iconColor: .red,
+                    text: "×\(streak) best streak",
+                    accessibility: "Longest streak: \(streak) trios in a row"
+                )
+            }
+        }
+    }
+
+    private func statBadge(icon: String, iconColor: Color, text: String, accessibility: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon)
+                .foregroundStyle(iconColor)
+            Text(text)
+                .font(.subheadline.weight(.medium))
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(iconColor.opacity(0.15), in: .capsule)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibility)
     }
 }
 

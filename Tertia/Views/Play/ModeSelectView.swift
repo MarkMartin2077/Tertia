@@ -9,6 +9,7 @@ import SwiftUI
 
 struct ModeSelectView: View {
     @Environment(DailyStore.self) private var dailyStore
+    @AppStorage("hasFinishedAnyGame") private var hasFinishedAnyGame: Bool = false
 
     let lastPlayed: GameMode?
     let onSelect: (GameMode) -> Void
@@ -61,6 +62,7 @@ struct ModeSelectView: View {
                     ModeCard(
                         mode: mode,
                         isLastPlayed: lastPlayed == mode,
+                        showsRecommendedBadge: mode == .practice && !hasFinishedAnyGame,
                         onTap: { onSelect(mode) }
                     )
                 }
@@ -79,7 +81,7 @@ struct ModeSelectView: View {
 
     private var dailyStatus: DailyHeroCard.Status {
         guard let record = dailyStore.todaysRecord else {
-            return .ready
+            return .ready(streak: dailyStore.displayedStreak)
         }
         return .completed(
             score: record.score,
@@ -94,7 +96,7 @@ struct ModeSelectView: View {
         let date = formatter.string(from: record.day)
         var lines = [
             "🟪 Tertia Daily — \(date)",
-            "🎯 \(record.score) \(record.score == 1 ? "set" : "sets") in 90s"
+            "🎯 \(record.score) \(record.score == 1 ? "trio" : "trios") in 90s"
         ]
         let streak = dailyStore.displayedStreak
         if streak > 1 {
@@ -107,6 +109,7 @@ struct ModeSelectView: View {
 private struct ModeCard: View {
     let mode: GameMode
     let isLastPlayed: Bool
+    var showsRecommendedBadge: Bool = false
     let onTap: () -> Void
 
     var body: some View {
@@ -130,6 +133,14 @@ private struct ModeCard: View {
                                 .background(mode.accentColor.opacity(0.18), in: .capsule)
                                 .foregroundStyle(mode.accentColor)
                         }
+                    }
+                    if showsRecommendedBadge {
+                        Text("Recommended for new players")
+                            .font(.caption2.weight(.semibold))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(mode.accentColor.opacity(0.16), in: .capsule)
+                            .foregroundStyle(mode.accentColor)
                     }
                     Text(mode.description)
                         .font(.subheadline)

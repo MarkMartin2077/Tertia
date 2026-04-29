@@ -19,7 +19,7 @@ struct PracticeVerdictBar: View {
                     Image(systemName: explanation.isSet ? "checkmark.circle.fill" : "xmark.circle.fill")
                         .font(.title3)
                         .foregroundStyle(verdictColor)
-                    Text(explanation.isSet ? "It's a set!" : "Not a set")
+                    Text(explanation.isSet ? "It's a trio!" : "Not a trio")
                         .font(.subheadline.bold())
                         .foregroundStyle(.primary)
                     Spacer(minLength: 8)
@@ -47,7 +47,7 @@ struct PracticeVerdictBar: View {
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(explanation.isSet ? "Valid set" : "Not a set")
+        .accessibilityLabel(explanation.isSet ? "Valid trio" : "Not a trio")
         .accessibilityValue(accessibilityValue)
         .accessibilityHint("Double tap to continue")
     }
@@ -90,7 +90,7 @@ struct PracticeVerdictBar: View {
     }
 
     private var accessibilityValue: String {
-        let headline = explanation.isSet ? "It's a set." : "Not a set."
+        let headline = explanation.isSet ? "It's a trio." : "Not a trio."
         let rows = CardAttribute.allCases.map { attr in
             "\(attr.label.capitalized): \(describe(cards, attribute: attr))"
         }.joined(separator: ". ")
@@ -98,7 +98,7 @@ struct PracticeVerdictBar: View {
     }
 }
 
-#Preview("Valid set") {
+#Preview("Valid trio") {
     let cards = [
         SetCard(shape: .circle, count: .one, color: .red, fill: .filled),
         SetCard(shape: .square, count: .two, color: .green, fill: .empty),
