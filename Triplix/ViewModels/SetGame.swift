@@ -9,51 +9,55 @@ import SwiftUI
 
 @Observable
 class SetGame {
-    var boardSlots: [SetCard?] = Array(repeating: nil, count: 18)
+    static let boardSize = 18
+    static let setSize = 3
+
+    var boardSlots: [SetCard?] = Array(repeating: nil, count: SetGame.boardSize)
     var deck = [SetCard]()
     var selectedCards = Set<SetCard>()
     var score = 0
 
+    var hasInvalidSelection: Bool {
+        selectedCards.count == SetGame.setSize && !isSet(Array(selectedCards))
+    }
+
     init() {
         createBoard()
     }
-    
-    func drawCards(count: Int) -> [SetCard] {
+
+    private func drawCards(count: Int) -> [SetCard] {
         let drawnCards = Array(deck.prefix(count))
         deck.removeFirst(drawnCards.count)
         return drawnCards
     }
-    
-    func createBoard() {
-        var newDeck = [SetCard]()
-        //TODO: Refactor with flatMap calls
-        for shape in CardShape.allCases {
-            for count in CardCount.allCases {
-                for color in CardColor.allCases {
-                    for fill in CardFill.allCases {
-                        newDeck.append(
-                            SetCard(
-                                shape: shape,
-                                count: count,
-                                color: color,
-                                fill: fill
-                            )
-                        )
+
+    private func createBoard() {
+        deck = CardShape.allCases.flatMap { shape in
+            CardCount.allCases.flatMap { count in
+                CardColor.allCases.flatMap { color in
+                    CardFill.allCases.map { fill in
+                        SetCard(shape: shape, count: count, color: color, fill: fill)
                     }
                 }
             }
-        }
-        
-        deck = newDeck.shuffled()
-        
+        }.shuffled()
+
         let openingCards = drawCards(count: boardSlots.count)
 
         for (index, card) in openingCards.enumerated() {
             boardSlots[index] = card
         }
-
     }
-    
+
+    func newGame() {
+        withAnimation {
+            selectedCards.removeAll()
+            score = 0
+            boardSlots = Array(repeating: nil, count: SetGame.boardSize)
+            createBoard()
+        }
+    }
+
     func select(_ card: SetCard) {
         guard boardSlots.contains(card) else { return }
 
@@ -62,35 +66,36 @@ class SetGame {
             return
         }
 
-        if selectedCards.count == 3 {
+        if selectedCards.count == SetGame.setSize {
             selectedCards.removeAll()
         }
 
         selectedCards.insert(card)
-        
+
         guard isSet(Array(selectedCards)) else { return }
 
         score += 1
         resolveMatchedCards(matching: selectedCards)
     }
-    
-    func allSameOrAllDifferent<Value: Hashable>(_ values: [Value]) -> Bool {
+
+    private func allSameOrAllDifferent<Value: Hashable>(_ values: [Value]) -> Bool {
         let uniqueValueCount = Set(values).count
-        return uniqueValueCount == 1 || uniqueValueCount == 3
+        return uniqueValueCount == 1 || uniqueValueCount == SetGame.setSize
     }
-    
+
     func isSet(_ cards: [SetCard]) -> Bool {
-        guard cards.count == 3 else { return false }
+        guard cards.count == SetGame.setSize else { return false }
 
         return allSameOrAllDifferent(cards.map(\.shape))
             && allSameOrAllDifferent(cards.map(\.count))
             && allSameOrAllDifferent(cards.map(\.color))
             && allSameOrAllDifferent(cards.map(\.fill))
     }
-    
-    func resolveMatchedCards(matching matchedCards: Set<SetCard?>) {
+
+    private func resolveMatchedCards(matching matchedCards: Set<SetCard>) {
         let matchedIndices = boardSlots.indices.filter { index in
-            matchedCards.contains(boardSlots[index])
+            guard let card = boardSlots[index] else { return false }
+            return matchedCards.contains(card)
         }
         let replacementCards = drawCards(count: matchedIndices.count)
         withAnimation {
@@ -107,12 +112,17 @@ class SetGame {
             }
         }
     }
-    
-    func showHint() {
-        selectedCards = Set(findSetOnBoard().prefix(2))
+
+    @discardableResult
+    func showHint() -> Bool {
+        guard let foundSet = findSetOnBoard() else { return false }
+        withAnimation {
+            selectedCards = Set(foundSet.prefix(2))
+        }
+        return true
     }
-    
-    func findSetOnBoard() -> [SetCard] {
+
+    private func findSetOnBoard() -> [SetCard]? {
         let cards = boardSlots.compactMap(\.self)
 
         for firstIndex in cards.indices.shuffled() {
@@ -131,6 +141,6 @@ class SetGame {
             }
         }
 
-        return []
+        return nil
     }
 }
