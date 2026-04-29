@@ -39,6 +39,16 @@ final class StatsViewModel {
         dailyStore.bestStreak
     }
 
+    var dailyBest: Int? {
+        dailyHistory.map(\.score).max()
+    }
+
+    /// Daily history sorted oldest → newest, capped to the last N entries for
+    /// the trend chart.
+    func recentDailyHistory(_ n: Int = 30) -> [DailyRecord] {
+        Array(dailyHistory.sorted(by: { $0.day < $1.day }).suffix(n))
+    }
+
     var timeAttackEntries: [HighScoreEntry] {
         highScoreStore.entries.filter { $0.durationSeconds == timeAttackDuration }
     }

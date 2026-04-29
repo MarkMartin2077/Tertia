@@ -11,7 +11,7 @@ struct StatsView: View {
     @Environment(HighScoreStore.self) private var highScoreStore
     @Environment(DailyStore.self) private var dailyStore
 
-    let onPlayTimeAttack: () -> Void
+    let onPlay: (GameMode) -> Void
 
     var body: some View {
         StatsBody(
@@ -19,20 +19,18 @@ struct StatsView: View {
                 highScoreStore: highScoreStore,
                 dailyStore: dailyStore
             ),
-            onPlayTimeAttack: onPlayTimeAttack
+            onPlay: onPlay
         )
     }
 }
 
-// MARK: - Body wrapper (so the NavigationStack and StatsScroll can take the VM by value)
-
 private struct StatsBody: View {
     let viewModel: StatsViewModel
-    let onPlayTimeAttack: () -> Void
+    let onPlay: (GameMode) -> Void
 
     var body: some View {
         NavigationStack {
-            StatsScroll(viewModel: viewModel, onPlayTimeAttack: onPlayTimeAttack)
+            StatsScroll(viewModel: viewModel, onPlay: onPlay)
                 .boardBackground()
                 .navigationTitle("Stats")
         }
@@ -43,7 +41,7 @@ private struct StatsBody: View {
 
 private struct StatsScroll: View {
     let viewModel: StatsViewModel
-    let onPlayTimeAttack: () -> Void
+    let onPlay: (GameMode) -> Void
 
     private var isCompletelyEmpty: Bool {
         !viewModel.hasDailyHistory && !viewModel.hasTimeAttackHistory
@@ -53,25 +51,12 @@ private struct StatsScroll: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 28) {
                 if isCompletelyEmpty {
-                    StatsWelcomeBanner(onPlayTimeAttack: onPlayTimeAttack)
+                    StatsWelcomeBanner(onPlay: onPlay)
                 }
 
-                StatsSummary(viewModel: viewModel)
+                DailySection(viewModel: viewModel)
 
-                ChartCard {
-                    DailyStreakChart(
-                        records: viewModel.dailyHistory,
-                        today: .now
-                    )
-                }
-
-                ChartCard {
-                    TimeAttackTrendChart(entries: viewModel.timeAttackEntries)
-                }
-
-                if viewModel.hasTimeAttackHistory {
-                    TopRunsSection(entries: viewModel.topTimeAttackEntries(5))
-                }
+                TimeAttackSection(viewModel: viewModel)
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 20)
@@ -79,8 +64,10 @@ private struct StatsScroll: View {
     }
 }
 
+// MARK: - Welcome banner
+
 private struct StatsWelcomeBanner: View {
-    let onPlayTimeAttack: () -> Void
+    let onPlay: (GameMode) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -91,18 +78,32 @@ private struct StatsWelcomeBanner: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Your stats live here")
                         .font(.headline)
-                    Text("Play the Daily Puzzle to start a streak, or run Time Attack to set a high score. The charts below fill in as you go.")
+                    Text("Build a streak with the Daily Puzzle, or chase a high score in Time Attack. The charts below fill in as you go.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
             }
-            Button(action: onPlayTimeAttack) {
-                Label("Start Time Attack", systemImage: "timer")
-                    .frame(maxWidth: .infinity)
+            HStack(spacing: 10) {
+                Button {
+                    onPlay(.daily)
+                } label: {
+                    Label("Today's Daily", systemImage: "calendar")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .tint(.purple)
+
+                Button {
+                    onPlay(.timeAttack)
+                } label: {
+                    Label("Time Attack", systemImage: "timer")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.large)
+                .tint(.orange)
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .tint(.orange)
         }
         .padding(16)
         .background(.background, in: .rect(cornerRadius: 16))
@@ -113,11 +114,15 @@ private struct StatsWelcomeBanner: View {
     }
 }
 
-private struct StatsSummary: View {
+// MARK: - Daily section
+
+private struct DailySection: View {
     let viewModel: StatsViewModel
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
+            SectionHeading(title: "Daily Puzzle", color: .purple, systemImage: "calendar")
+
             HStack(spacing: 16) {
                 StatTile(
                     icon: "flame.fill",
@@ -131,21 +136,34 @@ private struct StatsSummary: View {
                     value: "\(viewModel.bestStreak)",
                     label: "Best streak"
                 )
+                StatTile(
+                    icon: "star.fill",
+                    tint: .purple,
+                    value: viewModel.dailyBest.map(String.init) ?? "—",
+                    label: "Best score"
+                )
             }
 
-            BestScoresSection(viewModel: viewModel)
+            ChartCard {
+                DailyStreakChart(records: viewModel.dailyHistory, today: .now)
+            }
+
+            ChartCard {
+                DailyScoreTrendChart(records: viewModel.dailyHistory)
+            }
         }
     }
 }
 
-private struct BestScoresSection: View {
+// MARK: - Time Attack section
+
+private struct TimeAttackSection: View {
     let viewModel: StatsViewModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Time Attack — Best Scores")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 14) {
+            SectionHeading(title: "Time Attack", color: .orange, systemImage: "timer")
+
             HStack(spacing: 16) {
                 StatTile(
                     icon: "infinity",
@@ -166,6 +184,32 @@ private struct BestScoresSection: View {
                     label: "Today"
                 )
             }
+
+            ChartCard {
+                TimeAttackTrendChart(entries: viewModel.timeAttackEntries)
+            }
+
+            if viewModel.hasTimeAttackHistory {
+                TopRunsSection(entries: viewModel.topTimeAttackEntries(5))
+            }
+        }
+    }
+}
+
+// MARK: - Reusable bits
+
+private struct SectionHeading: View {
+    let title: String
+    let color: Color
+    let systemImage: String
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: systemImage)
+                .foregroundStyle(color)
+            Text(title)
+                .font(.title3.bold())
+            Spacer()
         }
     }
 }
@@ -184,6 +228,8 @@ private struct StatTile: View {
                 Text(label)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
             }
             Text(value)
                 .font(.title.bold())
@@ -289,7 +335,7 @@ private struct RankBadge: View {
 }
 
 #Preview("Empty") {
-    StatsView(onPlayTimeAttack: {})
+    StatsView(onPlay: { _ in })
         .environment(HighScoreStore())
         .environment(DailyStore())
 }
@@ -302,7 +348,7 @@ private struct RankBadge: View {
         highScores.record(score: Int.random(in: 4...14), durationSeconds: 300, date: date)
     }
     let daily = DailyStore()
-    return StatsView(onPlayTimeAttack: {})
+    return StatsView(onPlay: { _ in })
         .environment(highScores)
         .environment(daily)
 }

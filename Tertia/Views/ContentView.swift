@@ -22,8 +22,8 @@ struct ContentView: View {
                 PlayCoordinator(requestedMode: $requestedPlayMode)
             }
             Tab("Stats", systemImage: "chart.bar.fill", value: AppTab.stats) {
-                StatsView(onPlayTimeAttack: {
-                    requestedPlayMode = .timeAttack
+                StatsView(onPlay: { mode in
+                    requestedPlayMode = mode
                     selectedTab = .play
                 })
             }
