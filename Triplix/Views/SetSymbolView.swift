@@ -9,8 +9,7 @@ import SwiftUI
 
 struct SetSymbolView: View {
     let card: SetCard
-    let symbolSize = 32.0
-    
+    var symbolSize: Double = 32
 
     var body: some View {
         Image(systemName: card.shape.systemName(for: card.fill))

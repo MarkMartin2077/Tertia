@@ -7,6 +7,6 @@
 
 import Foundation
 
-enum CardFill: CaseIterable {
+nonisolated enum CardFill: CaseIterable {
     case empty, rightHalf, filled
 }

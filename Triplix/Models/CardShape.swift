@@ -7,7 +7,7 @@
 
 import Foundation
 
-enum CardShape: CaseIterable {
+nonisolated enum CardShape: CaseIterable {
     case circle, square, triangle
     
     func systemName(for fill: CardFill) -> String {

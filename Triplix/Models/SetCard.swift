@@ -7,7 +7,7 @@
 
 import Foundation
 
-struct SetCard: Identifiable, Hashable {
+nonisolated struct SetCard: Identifiable, Hashable {
     let id = UUID()
     var shape: CardShape
     var count: CardCount
