@@ -6,6 +6,22 @@ Love games like **Set**? Tertia is a fast, focused pattern-matching card game bu
 
 ---
 
+## Screenshots
+
+### iPhone
+
+| Choose Mode | In-game | Stats |
+| :---------: | :-----: | :---: |
+| <img src="screenshots/iphone-mode-select.png" width="240" alt="Choose Mode with active Daily streak" /> | <img src="screenshots/iphone-game.png" width="240" alt="Normal mode with the 12-card board" /> | <img src="screenshots/iphone-stats.png" width="240" alt="Stats with daily streak heatmap" /> |
+
+### iPad
+
+| Choose Mode | In-game | Stats |
+| :---------: | :-----: | :---: |
+| <img src="screenshots/ipad-mode-select.png" width="280" alt="Choose Mode with active Daily streak" /> | <img src="screenshots/ipad-game.png" width="280" alt="Normal mode with the 12-card board" /> | <img src="screenshots/ipad-stats.png" width="280" alt="Stats with daily streak heatmap" /> |
+
+---
+
 ## What you do
 
 Each card has four attributes: **shape**, **count**, **color**, and **fill.**

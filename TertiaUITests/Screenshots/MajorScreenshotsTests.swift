@@ -2,10 +2,13 @@
 //  MajorScreenshotsTests.swift
 //  TertiaUITests
 //
-//  Captures one screenshot per major screen. Output: /tmp/tertia-screenshots/major-*.png
+//  Captures one screenshot per major screen with realistic mock data primed
+//  via the `-screenshotMockData` launch argument. Output lands in
+//  /tmp/tertia-screenshots/major-*.png.
 //
 
 import XCTest
+import UIKit
 
 final class MajorScreenshotsTests: XCTestCase {
 
@@ -14,18 +17,27 @@ final class MajorScreenshotsTests: XCTestCase {
     }
 
     @MainActor
-    private func launchPastOnboarding() -> XCUIApplication {
+    private func launchPostOnboarding() -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["-hasCompletedOnboarding", "1"]
+        app.launchArguments = [
+            "-hasCompletedOnboarding", "1",
+            "-screenshotMockData",
+            "-colorSchemePreference", "light"
+        ]
         app.launch()
+        dismissAppleAccountAlert()
         return app
     }
 
     @MainActor
     private func launchAtOnboarding() -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["-hasCompletedOnboarding", "0"]
+        app.launchArguments = [
+            "-hasCompletedOnboarding", "0",
+            "-colorSchemePreference", "light"
+        ]
         app.launch()
+        dismissAppleAccountAlert()
         return app
     }
 
@@ -34,38 +46,63 @@ final class MajorScreenshotsTests: XCTestCase {
         Thread.sleep(forTimeInterval: 1.0)
     }
 
+    @MainActor
+    private func deviceSuffix() -> String {
+        UIDevice.current.userInterfaceIdiom == .pad ? "ipad" : "iphone"
+    }
+
+    @MainActor
+    private func captureForDevice(_ name: String) {
+        capture("\(name)-\(deviceSuffix())")
+    }
+
+    /// Dismisses the springboard "Apple Account Verification" system alert
+    /// that occasionally appears on fresh simulator boots and would otherwise
+    /// occlude every screenshot. No-op if the alert isn't present.
+    @MainActor
+    private func dismissAppleAccountAlert() {
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let notNow = springboard.buttons["Not Now"]
+        if notNow.waitForExistence(timeout: 1) {
+            notNow.tap()
+        }
+    }
+
     // MARK: - Mode Select & Tabs
 
     @MainActor
     func testModeSelect() throws {
-        let app = launchPastOnboarding()
+        let app = launchPostOnboarding()
         XCTAssertTrue(app.staticTexts["Choose Mode"].waitForExistence(timeout: 3))
-        capture("major-mode-select")
+        captureForDevice("major-mode-select")
     }
 
     @MainActor
     func testStatsTab() throws {
-        let app = launchPastOnboarding()
-        app.buttons["Stats"].tap()
-        XCTAssertTrue(app.staticTexts["No runs yet"].waitForExistence(timeout: 3))
-        capture("major-stats")
+        let app = launchPostOnboarding()
+        tapTab("Stats", in: app)
+        // Mock data populates Daily Puzzle section with a streak
+        XCTAssertTrue(app.staticTexts["Daily Puzzle"].waitForExistence(timeout: 3))
+        // Give charts a beat to render
+        Thread.sleep(forTimeInterval: 0.5)
+        captureForDevice("major-stats")
     }
 
     @MainActor
     func testSettingsTab() throws {
-        let app = launchPastOnboarding()
-        app.buttons["Settings"].tap()
+        let app = launchPostOnboarding()
+        tapTab("Settings", in: app)
         XCTAssertTrue(app.staticTexts["Theme"].waitForExistence(timeout: 3))
-        capture("major-settings")
+        captureForDevice("major-settings")
     }
 
     @MainActor
     func testRulesView() throws {
-        let app = launchPastOnboarding()
-        app.buttons["Settings"].tap()
+        let app = launchPostOnboarding()
+        tapTab("Settings", in: app)
         app.buttons["How to Play"].tap()
-        XCTAssertTrue(app.staticTexts["What is a Set?"].waitForExistence(timeout: 3))
-        capture("major-rules")
+        XCTAssertTrue(app.staticTexts["What is a Trio?"].waitForExistence(timeout: 3))
+        captureForDevice("major-rules")
     }
 
     // MARK: - Onboarding Slides
@@ -74,7 +111,7 @@ final class MajorScreenshotsTests: XCTestCase {
     func testOnboardingWelcome() throws {
         let app = launchAtOnboarding()
         XCTAssertTrue(app.staticTexts["Welcome to Tertia"].waitForExistence(timeout: 3))
-        capture("major-onboarding-welcome")
+        captureForDevice("major-onboarding-welcome")
     }
 
     @MainActor
@@ -82,8 +119,8 @@ final class MajorScreenshotsTests: XCTestCase {
         let app = launchAtOnboarding()
         XCTAssertTrue(app.staticTexts["Welcome to Tertia"].waitForExistence(timeout: 3))
         app.swipeLeft()
-        XCTAssertTrue(app.staticTexts["What Makes a Set"].waitForExistence(timeout: 3))
-        capture("major-onboarding-rule")
+        XCTAssertTrue(app.staticTexts["What Makes a Trio"].waitForExistence(timeout: 3))
+        captureForDevice("major-onboarding-rule")
     }
 
     @MainActor
@@ -92,8 +129,8 @@ final class MajorScreenshotsTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Welcome to Tertia"].waitForExistence(timeout: 3))
         app.swipeLeft()
         app.swipeLeft()
-        XCTAssertTrue(app.staticTexts["These ARE Sets"].waitForExistence(timeout: 3))
-        capture("major-onboarding-valid-sets")
+        XCTAssertTrue(app.staticTexts["These ARE Trios"].waitForExistence(timeout: 3))
+        captureForDevice("major-onboarding-valid-sets")
     }
 
     @MainActor
@@ -103,61 +140,85 @@ final class MajorScreenshotsTests: XCTestCase {
         app.swipeLeft()
         app.swipeLeft()
         app.swipeLeft()
-        XCTAssertTrue(app.staticTexts["Not Sets"].waitForExistence(timeout: 3))
-        capture("major-onboarding-non-sets")
+        XCTAssertTrue(app.staticTexts["Not Trios"].waitForExistence(timeout: 3))
+        captureForDevice("major-onboarding-non-sets")
+    }
+
+    @MainActor
+    func testOnboardingScoring() throws {
+        let app = launchAtOnboarding()
+        XCTAssertTrue(app.staticTexts["Welcome to Tertia"].waitForExistence(timeout: 3))
+        for _ in 0..<4 { app.swipeLeft() }
+        XCTAssertTrue(app.staticTexts["Harder Trios = More Points"].waitForExistence(timeout: 3))
+        captureForDevice("major-onboarding-scoring")
     }
 
     @MainActor
     func testOnboardingReady() throws {
         let app = launchAtOnboarding()
         XCTAssertTrue(app.staticTexts["Welcome to Tertia"].waitForExistence(timeout: 3))
-        app.swipeLeft()
-        app.swipeLeft()
-        app.swipeLeft()
-        app.swipeLeft()
+        for _ in 0..<5 { app.swipeLeft() }
         XCTAssertTrue(app.staticTexts["You're Ready"].waitForExistence(timeout: 3))
-        capture("major-onboarding-ready")
+        captureForDevice("major-onboarding-ready")
     }
 
     // MARK: - Game Modes
 
+    /// iPad's floating tab bar exposes the same Button twice (cell + view), so
+    /// `app.buttons["Stats"]` is ambiguous there. `firstMatch` picks one.
+    @MainActor
+    private func tapTab(_ name: String, in app: XCUIApplication) {
+        app.buttons[name].firstMatch.tap()
+    }
+
+    @MainActor
+    private func tapMode(_ name: String, in app: XCUIApplication) {
+        let button = app.buttons[name]
+        if !button.isHittable {
+            // Mode list is below the daily hero card; scroll to bring it on-screen.
+            app.swipeUp()
+        }
+        button.tap()
+    }
+
     @MainActor
     func testPracticeGame() throws {
-        let app = launchPastOnboarding()
+        let app = launchPostOnboarding()
         XCTAssertTrue(app.staticTexts["Choose Mode"].waitForExistence(timeout: 3))
-        app.buttons["Practice"].tap()
-        XCTAssertTrue(app.staticTexts["Score: 0"].waitForExistence(timeout: 3))
+        tapMode("Practice", in: app)
+        XCTAssertTrue(app.staticTexts["Score 0"].waitForExistence(timeout: 3))
         waitForDealAnimation()
-        capture("major-game-practice")
+        captureForDevice("major-game-practice")
     }
 
     @MainActor
     func testNormalGame() throws {
-        let app = launchPastOnboarding()
+        let app = launchPostOnboarding()
         XCTAssertTrue(app.staticTexts["Choose Mode"].waitForExistence(timeout: 3))
-        app.buttons["Normal"].tap()
-        XCTAssertTrue(app.staticTexts["Score: 0"].waitForExistence(timeout: 3))
+        tapMode("Normal", in: app)
+        XCTAssertTrue(app.staticTexts["Score 0"].waitForExistence(timeout: 3))
         waitForDealAnimation()
-        capture("major-game-normal")
+        captureForDevice("major-game-normal")
     }
 
     @MainActor
     func testTimeAttackGame() throws {
-        let app = launchPastOnboarding()
+        let app = launchPostOnboarding()
         XCTAssertTrue(app.staticTexts["Choose Mode"].waitForExistence(timeout: 3))
-        app.buttons["Time Attack"].tap()
-        XCTAssertTrue(app.staticTexts["Score: 0"].waitForExistence(timeout: 3))
+        tapMode("Time Attack", in: app)
+        XCTAssertTrue(app.staticTexts["Score 0"].waitForExistence(timeout: 3))
         waitForDealAnimation()
-        capture("major-game-time-attack")
+        captureForDevice("major-game-time-attack")
     }
 
     @MainActor
-    func testDailyGame() throws {
-        let app = launchPastOnboarding()
+    func testDailyHeroDoneState() throws {
+        // Mock data marks today's daily as completed → DailyHeroCard renders
+        // its "DONE" + streak state with the share button. Captures the
+        // Mode Select screen showcasing daily engagement.
+        let app = launchPostOnboarding()
         XCTAssertTrue(app.staticTexts["Choose Mode"].waitForExistence(timeout: 3))
-        app.buttons["Start Today"].tap()
-        XCTAssertTrue(app.staticTexts["Score: 0"].waitForExistence(timeout: 3))
-        waitForDealAnimation()
-        capture("major-game-daily")
+        XCTAssertTrue(app.staticTexts["DONE"].waitForExistence(timeout: 3))
+        captureForDevice("major-daily-done")
     }
 }
