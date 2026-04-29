@@ -63,7 +63,7 @@ struct RulesView: View {
                     body: "Tap three cards to select them. If they form a trio, you score points and the cards are replaced. If not, the cards flash red — tap a fourth card to start over."
                 )
 
-                scoringSection
+                ScoringSection()
 
                 section(
                     title: "Tools",
@@ -88,43 +88,6 @@ struct RulesView: View {
             Text(.init(body))
                 .font(.body)
                 .foregroundStyle(.secondary)
-        }
-    }
-
-    private var scoringSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Scoring")
-                .font(.headline)
-            Text(.init("Each trio is worth **1 to 4 base points** — one point for every attribute that's all-different across the three cards. Easy trios score less; wild ones score more."))
-                .font(.body)
-                .foregroundStyle(.secondary)
-
-            VStack(alignment: .leading, spacing: 4) {
-                scoringRow(points: 1, label: "Three attributes match, one varies (the easy spot).")
-                scoringRow(points: 2, label: "Two attributes match, two vary.")
-                scoringRow(points: 3, label: "One attribute matches, three vary.")
-                scoringRow(points: 4, label: "Every attribute is all-different. The wildest trio.")
-            }
-            .padding(.top, 4)
-
-            Text(.init("**Combos** stack on top. Land another trio within 5 seconds of the last and your multiplier climbs from ×1 to ×2 to ×3, applied to the base points."))
-                .font(.body)
-                .foregroundStyle(.secondary)
-                .padding(.top, 6)
-        }
-    }
-
-    private func scoringRow(points: Int, label: String) -> some View {
-        HStack(spacing: 10) {
-            Text("+\(points)")
-                .font(.subheadline.bold())
-                .monospacedDigit()
-                .foregroundStyle(.green)
-                .frame(width: 32, alignment: .leading)
-            Text(label)
-                .font(.subheadline)
-                .foregroundStyle(.primary)
-            Spacer(minLength: 0)
         }
     }
 
@@ -155,5 +118,49 @@ struct RulesView: View {
 #Preview {
     NavigationStack {
         RulesView()
+    }
+}
+
+private struct ScoringSection: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Scoring")
+                .font(.headline)
+            Text(.init("Each trio is worth **1 to 4 base points** — one point for every attribute that's all-different across the three cards. Easy trios score less; wild ones score more."))
+                .font(.body)
+                .foregroundStyle(.secondary)
+
+            VStack(alignment: .leading, spacing: 4) {
+                ScoringRow(points: 1, label: "Three attributes match, one varies (the easy spot).")
+                ScoringRow(points: 2, label: "Two attributes match, two vary.")
+                ScoringRow(points: 3, label: "One attribute matches, three vary.")
+                ScoringRow(points: 4, label: "Every attribute is all-different. The wildest trio.")
+            }
+            .padding(.top, 4)
+
+            Text(.init("**Combos** stack on top. Land another trio within 5 seconds of the last and your multiplier climbs from ×1 to ×2 to ×3, applied to the base points."))
+                .font(.body)
+                .foregroundStyle(.secondary)
+                .padding(.top, 6)
+        }
+    }
+}
+
+private struct ScoringRow: View {
+    let points: Int
+    let label: String
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Text("+\(points)")
+                .font(.subheadline.bold())
+                .monospacedDigit()
+                .foregroundStyle(.green)
+                .frame(width: 32, alignment: .leading)
+            Text(label)
+                .font(.subheadline)
+                .foregroundStyle(.primary)
+            Spacer(minLength: 0)
+        }
     }
 }

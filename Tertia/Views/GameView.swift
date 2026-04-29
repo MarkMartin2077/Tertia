@@ -224,7 +224,7 @@ struct GameView: View {
         HStack(alignment: .firstTextBaseline) {
             scoreChip
                 .overlay(alignment: .trailing) {
-                    pointsToast
+                    PointsToast(value: $pointsToastValue, id: pointsToastID)
                         .alignmentGuide(.trailing) { d in d[.leading] - 8 }
                 }
             Spacer()
@@ -270,29 +270,6 @@ struct GameView: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Score \(game.score)")
         .accessibilityValue(comboActive ? "Combo multiplier ×\(game.multiplier)" : "")
-    }
-
-    @ViewBuilder
-    private var pointsToast: some View {
-        if let value = pointsToastValue {
-            Text("+\(value)")
-                .font(.title3.bold())
-                .foregroundStyle(.green)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 4)
-                .background(Color.green.opacity(0.18), in: .capsule)
-                .id(pointsToastID)
-                .transition(reduceMotion
-                    ? .opacity
-                    : .move(edge: .leading).combined(with: .opacity))
-                .accessibilityLabel("Plus \(value) points")
-                .task(id: pointsToastID) {
-                    try? await Task.sleep(for: .milliseconds(900))
-                    withAnimation(.easeOut(duration: 0.3)) {
-                        pointsToastValue = nil
-                    }
-                }
-        }
     }
 
     @ViewBuilder
@@ -680,4 +657,33 @@ struct GameView: View {
         .environment(HighScoreStore())
         .environment(DailyStore())
         .environment(FeedbackService())
+}
+
+private struct PointsToast: View {
+    @Binding var value: Int?
+    let id: Int
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    @ViewBuilder
+    var body: some View {
+        if let value {
+            Text("+\(value)")
+                .font(.title3.bold())
+                .foregroundStyle(.green)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .background(Color.green.opacity(0.18), in: .capsule)
+                .id(id)
+                .transition(reduceMotion
+                    ? .opacity
+                    : .move(edge: .leading).combined(with: .opacity))
+                .accessibilityLabel("Plus \(value) points")
+                .task(id: id) {
+                    try? await Task.sleep(for: .milliseconds(900))
+                    withAnimation(.easeOut(duration: 0.3)) {
+                        self.value = nil
+                    }
+                }
+        }
+    }
 }

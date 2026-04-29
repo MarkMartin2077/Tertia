@@ -123,10 +123,11 @@ private struct Day: Identifiable {
 }
 
 #Preview("Sparse") {
-    DailyStreakChart(
+    let cal = Calendar.current
+    return DailyStreakChart(
         records: [
-            DailyRecord(day: Calendar.current.date(byAdding: .day, value: -10, to: .now)!, score: 4),
-            DailyRecord(day: Calendar.current.date(byAdding: .day, value: -3, to: .now)!, score: 7),
+            DailyRecord(day: cal.date(byAdding: .day, value: -10, to: .now) ?? .now, score: 4),
+            DailyRecord(day: cal.date(byAdding: .day, value: -3, to: .now) ?? .now, score: 7),
             DailyRecord(day: .now, score: 2)
         ],
         today: .now
@@ -135,9 +136,10 @@ private struct Day: Identifiable {
 }
 
 #Preview("Dense") {
+    let cal = Calendar.current
     let records = (0..<35).compactMap { offset -> DailyRecord? in
         guard offset.isMultiple(of: 2) else { return nil }
-        let date = Calendar.current.date(byAdding: .day, value: -offset, to: .now)!
+        guard let date = cal.date(byAdding: .day, value: -offset, to: .now) else { return nil }
         return DailyRecord(day: date, score: Int.random(in: 1...10))
     }
     return DailyStreakChart(records: records, today: .now)

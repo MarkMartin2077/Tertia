@@ -117,8 +117,9 @@ struct TimeAttackTrendChart: View {
 }
 
 #Preview("Trend") {
+    let cal = Calendar.current
     let entries: [HighScoreEntry] = (0..<14).map { offset in
-        let date = Calendar.current.date(byAdding: .day, value: -offset, to: .now)!
+        let date = cal.date(byAdding: .day, value: -offset, to: .now) ?? .now
         return HighScoreEntry(
             score: Int.random(in: 4...14),
             durationSeconds: 300,

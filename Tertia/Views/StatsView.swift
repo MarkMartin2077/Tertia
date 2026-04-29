@@ -17,64 +17,85 @@ struct StatsView: View {
 
     var body: some View {
         NavigationStack {
-            content
-                .boardBackground()
-                .navigationTitle("Stats")
-                .onAppear {
-                    if viewModel == nil {
-                        viewModel = StatsViewModel(
-                            highScoreStore: highScoreStore,
-                            dailyStore: dailyStore
-                        )
-                    }
+            StatsContent(
+                viewModel: viewModel,
+                onPlayTimeAttack: onPlayTimeAttack
+            )
+            .boardBackground()
+            .navigationTitle("Stats")
+            .onAppear {
+                if viewModel == nil {
+                    viewModel = StatsViewModel(
+                        highScoreStore: highScoreStore,
+                        dailyStore: dailyStore
+                    )
                 }
-        }
-    }
-
-    @ViewBuilder
-    private var content: some View {
-        if let viewModel {
-            if !viewModel.hasDailyHistory && !viewModel.hasTimeAttackHistory {
-                emptyState
-            } else {
-                populatedScroll(viewModel: viewModel)
             }
         }
     }
+}
 
-    private func populatedScroll(viewModel: StatsViewModel) -> some View {
+// MARK: - Top-level content switch
+
+private struct StatsContent: View {
+    let viewModel: StatsViewModel?
+    let onPlayTimeAttack: () -> Void
+
+    var body: some View {
+        if let viewModel {
+            if !viewModel.hasDailyHistory && !viewModel.hasTimeAttackHistory {
+                StatsEmptyState(onPlayTimeAttack: onPlayTimeAttack)
+            } else {
+                StatsScroll(viewModel: viewModel)
+            }
+        }
+    }
+}
+
+// MARK: - Populated state
+
+private struct StatsScroll: View {
+    let viewModel: StatsViewModel
+
+    var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 28) {
-                streakSummary(viewModel: viewModel)
+                StatsSummary(viewModel: viewModel)
 
-                DailyStreakChart(
-                    records: viewModel.dailyHistory,
-                    today: .now
-                )
-                .card()
+                ChartCard {
+                    DailyStreakChart(
+                        records: viewModel.dailyHistory,
+                        today: .now
+                    )
+                }
 
-                TimeAttackTrendChart(entries: viewModel.timeAttackEntries)
-                    .card()
+                ChartCard {
+                    TimeAttackTrendChart(entries: viewModel.timeAttackEntries)
+                }
 
                 if viewModel.hasTimeAttackHistory {
-                    recentRunsSection(viewModel: viewModel)
+                    TopRunsSection(entries: viewModel.topTimeAttackEntries(5))
                 }
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 20)
         }
     }
+}
 
-    private func streakSummary(viewModel: StatsViewModel) -> some View {
+private struct StatsSummary: View {
+    let viewModel: StatsViewModel
+
+    var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 16) {
-                statTile(
+                StatTile(
                     icon: "flame.fill",
                     tint: .orange,
                     value: "\(viewModel.currentStreak)",
                     label: "Day streak"
                 )
-                statTile(
+                StatTile(
                     icon: "trophy.fill",
                     tint: .yellow,
                     value: "\(viewModel.bestStreak)",
@@ -83,30 +104,34 @@ struct StatsView: View {
             }
 
             if viewModel.hasTimeAttackHistory {
-                bestScoresSection(viewModel: viewModel)
+                BestScoresSection(viewModel: viewModel)
             }
         }
     }
+}
 
-    private func bestScoresSection(viewModel: StatsViewModel) -> some View {
+private struct BestScoresSection: View {
+    let viewModel: StatsViewModel
+
+    var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Time Attack — Best Scores")
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.secondary)
             HStack(spacing: 16) {
-                statTile(
+                StatTile(
                     icon: "infinity",
                     tint: .orange,
                     value: viewModel.timeAttackBest.map(String.init) ?? "—",
                     label: "All time"
                 )
-                statTile(
+                StatTile(
                     icon: "calendar.badge.clock",
                     tint: .orange,
                     value: viewModel.timeAttackBestThisWeek.map(String.init) ?? "—",
                     label: "This week"
                 )
-                statTile(
+                StatTile(
                     icon: "sun.max.fill",
                     tint: .orange,
                     value: viewModel.timeAttackBestToday.map(String.init) ?? "—",
@@ -115,8 +140,15 @@ struct StatsView: View {
             }
         }
     }
+}
 
-    private func statTile(icon: String, tint: Color, value: String, label: String) -> some View {
+private struct StatTile: View {
+    let icon: String
+    let tint: Color
+    let value: String
+    let label: String
+
+    var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
                 Image(systemName: icon)
@@ -137,15 +169,19 @@ struct StatsView: View {
                 .strokeBorder(Color.secondary.opacity(0.2), lineWidth: 1)
         }
     }
+}
 
-    private func recentRunsSection(viewModel: StatsViewModel) -> some View {
+private struct TopRunsSection: View {
+    let entries: [HighScoreEntry]
+
+    var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Top Time Attack Runs")
                 .font(.headline)
             VStack(spacing: 0) {
-                ForEach(Array(viewModel.topTimeAttackEntries(5).enumerated()), id: \.element.id) { index, entry in
+                ForEach(entries.enumerated(), id: \.element.id) { index, entry in
                     StatsRow(rank: index + 1, entry: entry)
-                    if index < viewModel.topTimeAttackEntries(5).count - 1 {
+                    if index < entries.count - 1 {
                         Divider()
                     }
                 }
@@ -159,8 +195,28 @@ struct StatsView: View {
             }
         }
     }
+}
 
-    private var emptyState: some View {
+private struct ChartCard<Content: View>: View {
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        content()
+            .padding(16)
+            .background(.background, in: .rect(cornerRadius: 16))
+            .overlay {
+                RoundedRectangle(cornerRadius: 16)
+                    .strokeBorder(Color.secondary.opacity(0.2), lineWidth: 1)
+            }
+    }
+}
+
+// MARK: - Empty state
+
+private struct StatsEmptyState: View {
+    let onPlayTimeAttack: () -> Void
+
+    var body: some View {
         VStack(spacing: 20) {
             Image(systemName: "chart.line.uptrend.xyaxis")
                 .font(.system(size: 56))
@@ -188,6 +244,8 @@ struct StatsView: View {
     }
 }
 
+// MARK: - Row
+
 private struct StatsRow: View {
     let rank: Int
     let entry: HighScoreEntry
@@ -200,7 +258,7 @@ private struct StatsRow: View {
 
     var body: some View {
         HStack(spacing: 16) {
-            rankBadge
+            RankBadge(rank: rank)
             VStack(alignment: .leading, spacing: 2) {
                 Text("\(entry.score) \(entry.score == 1 ? "trio" : "trios")")
                     .font(.title3.bold())
@@ -215,9 +273,12 @@ private struct StatsRow: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Rank \(rank). \(entry.score) trios. \(relativeText).")
     }
+}
 
-    @ViewBuilder
-    private var rankBadge: some View {
+private struct RankBadge: View {
+    let rank: Int
+
+    var body: some View {
         if rank == 1 {
             Image(systemName: "crown.fill")
                 .font(.title2)
@@ -232,18 +293,6 @@ private struct StatsRow: View {
     }
 }
 
-private extension View {
-    func card() -> some View {
-        self
-            .padding(16)
-            .background(.background, in: .rect(cornerRadius: 16))
-            .overlay {
-                RoundedRectangle(cornerRadius: 16)
-                    .strokeBorder(Color.secondary.opacity(0.2), lineWidth: 1)
-            }
-    }
-}
-
 #Preview("Empty") {
     StatsView(onPlayTimeAttack: {})
         .environment(HighScoreStore())
@@ -252,8 +301,9 @@ private extension View {
 
 #Preview("Populated") {
     let highScores = HighScoreStore()
+    let calendar = Calendar.current
     for offset in 0..<10 {
-        let date = Calendar.current.date(byAdding: .day, value: -offset, to: .now)!
+        let date = calendar.date(byAdding: .day, value: -offset, to: .now) ?? .now
         highScores.record(score: Int.random(in: 4...14), durationSeconds: 300, date: date)
     }
     let daily = DailyStore()

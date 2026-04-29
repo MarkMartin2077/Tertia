@@ -8,6 +8,7 @@ import Observation
 
 /// Composes the two stats-relevant stores into a single shape the view layer
 /// can render against. Pure derivation — no persistence of its own.
+@MainActor
 @Observable
 final class StatsViewModel {
     private let highScoreStore: HighScoreStore

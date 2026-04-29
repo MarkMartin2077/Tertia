@@ -216,12 +216,21 @@ private struct ScoringSlide: View {
                     .padding(.horizontal, 28)
 
                 VStack(spacing: 14) {
-                    pointsRow(points: 1, cards: ExampleData.oneAttributeDifferentSet,
-                              label: "Three attributes match — only one varies.")
-                    pointsRow(points: 2, cards: ExampleData.mixedSet,
-                              label: "Two attributes vary, two match.")
-                    pointsRow(points: 4, cards: ExampleData.allDifferentSet,
-                              label: "Every attribute is all-different. Maximum difficulty.")
+                    PointsRow(
+                        points: 1,
+                        cards: ExampleData.oneAttributeDifferentSet,
+                        label: "Three attributes match — only one varies."
+                    )
+                    PointsRow(
+                        points: 2,
+                        cards: ExampleData.mixedSet,
+                        label: "Two attributes vary, two match."
+                    )
+                    PointsRow(
+                        points: 4,
+                        cards: ExampleData.allDifferentSet,
+                        label: "Every attribute is all-different. Maximum difficulty."
+                    )
                 }
                 .padding(.horizontal, 24)
 
@@ -238,8 +247,14 @@ private struct ScoringSlide: View {
         }
         .scrollBounceBehavior(.basedOnSize)
     }
+}
 
-    private func pointsRow(points: Int, cards: [SetCard], label: String) -> some View {
+private struct PointsRow: View {
+    let points: Int
+    let cards: [SetCard]
+    let label: String
+
+    var body: some View {
         HStack(spacing: 12) {
             Text("+\(points)")
                 .font(.title2.bold())

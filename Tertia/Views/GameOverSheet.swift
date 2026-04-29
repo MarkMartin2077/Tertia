@@ -41,7 +41,7 @@ struct GameOverSheet: View {
                 statsBadges
                     .padding(.top, 8)
 
-                deckClearedLine
+                DeckClearedLine(strandedCardCount: strandedCardCount)
                     .padding(.top, 4)
             }
 
@@ -136,24 +136,6 @@ struct GameOverSheet: View {
     }
 
     @ViewBuilder
-    private var deckClearedLine: some View {
-        if let stranded = strandedCardCount {
-            if stranded == 0 {
-                Label("Perfect clear — every card found a trio.", systemImage: "checkmark.seal.fill")
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(.green)
-                    .multilineTextAlignment(.center)
-            } else {
-                Text("Cleared the deck — \(stranded) \(stranded == 1 ? "card" : "cards") stranded with no valid trio.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 8)
-            }
-        }
-    }
-
-    @ViewBuilder
     private var bestScoreBadge: some View {
         if isNewBest {
             Label("New best!", systemImage: "star.fill")
@@ -201,4 +183,30 @@ struct GameOverSheet: View {
         onPlayAgain: {},
         onChangeMode: {}
     )
+}
+
+/// Renders one of three states:
+/// - nil: hidden (used for timer-driven endings)
+/// - 0: "Perfect clear" celebration
+/// - >0: "N cards stranded with no valid trio"
+struct DeckClearedLine: View {
+    let strandedCardCount: Int?
+
+    @ViewBuilder
+    var body: some View {
+        if let stranded = strandedCardCount {
+            if stranded == 0 {
+                Label("Perfect clear — every card found a trio.", systemImage: "checkmark.seal.fill")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.green)
+                    .multilineTextAlignment(.center)
+            } else {
+                Text("Cleared the deck — \(stranded) \(stranded == 1 ? "card" : "cards") stranded with no valid trio.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 8)
+            }
+        }
+    }
 }
