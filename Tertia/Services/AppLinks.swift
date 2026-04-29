@@ -14,9 +14,11 @@ enum AppLinks {
         string: "https://boatneck-pickle-bfa.notion.site/Tertia-Terms-of-Service-35117d63a01a8079b78af0699781c70d"
     )!
 
-    /// Pending — populate once the policy page is published.
-    static let privacyPolicy: URL? = nil
+    static let privacyPolicy = URL(
+        string: "https://boatneck-pickle-bfa.notion.site/Tertia-Privacy-Policy-35117d63a01a80c2bbd1f6f7d11dc55e"
+    )!
 
-    /// Pending — populate once the support page is published.
-    static let support: URL? = nil
+    static let support = URL(
+        string: "https://boatneck-pickle-bfa.notion.site/Tertia-Support-35117d63a01a805b83ebf44c47ff8314"
+    )!
 }
