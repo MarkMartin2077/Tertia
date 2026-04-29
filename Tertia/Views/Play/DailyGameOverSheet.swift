@@ -14,6 +14,7 @@ struct DailyGameOverSheet: View {
     let streak: Int
     var fastestSetSeconds: Double? = nil
     var longestStreak: Int? = nil
+    var strandedCardCount: Int? = nil
     let onChangeMode: () -> Void
 
     private var dateText: String {
@@ -57,6 +58,9 @@ struct DailyGameOverSheet: View {
 
                 statsBadges
                     .padding(.top, 8)
+
+                deckClearedLine
+                    .padding(.top, 4)
             }
 
             VStack(spacing: 12) {
@@ -88,6 +92,24 @@ struct DailyGameOverSheet: View {
                 notification: .announcement,
                 argument: "Today's puzzle complete. You found \(score) \(score == 1 ? "trio" : "trios")."
             )
+        }
+    }
+
+    @ViewBuilder
+    private var deckClearedLine: some View {
+        if let stranded = strandedCardCount {
+            if stranded == 0 {
+                Label("Perfect clear — every card found a trio.", systemImage: "checkmark.seal.fill")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.green)
+                    .multilineTextAlignment(.center)
+            } else {
+                Text("Cleared the deck — \(stranded) \(stranded == 1 ? "card" : "cards") stranded with no valid trio.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 8)
+            }
         }
     }
 

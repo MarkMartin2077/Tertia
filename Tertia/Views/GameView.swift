@@ -442,6 +442,13 @@ struct GameView: View {
         }
     }
 
+    /// Stranded count is meaningful only for natural game-over (deck empty,
+    /// no trio remaining). Timer-driven endings leave plenty of cards on the
+    /// board but they aren't "stranded" in the cap-set sense, so suppress.
+    private var strandedCardCount: Int? {
+        mode.usesTimer ? nil : game.boardSlots.count
+    }
+
     @ViewBuilder
     private var gameOverSheet: some View {
         if mode == .daily {
@@ -451,6 +458,7 @@ struct GameView: View {
                 streak: dailyStore.displayedStreak,
                 fastestSetSeconds: game.fastestSetSeconds,
                 longestStreak: game.longestStreak >= 2 ? game.longestStreak : nil,
+                strandedCardCount: strandedCardCount,
                 onChangeMode: {
                     showGameOver = false
                     onExit()
@@ -465,6 +473,7 @@ struct GameView: View {
                 isNewBest: wasNewBest,
                 fastestSetSeconds: game.fastestSetSeconds,
                 longestStreak: game.longestStreak >= 2 ? game.longestStreak : nil,
+                strandedCardCount: strandedCardCount,
                 onPlayAgain: {
                     showGameOver = false
                     startNewGame()

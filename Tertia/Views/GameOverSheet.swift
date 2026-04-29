@@ -17,6 +17,10 @@ struct GameOverSheet: View {
     let isNewBest: Bool
     var fastestSetSeconds: Double? = nil
     var longestStreak: Int? = nil
+    /// Number of cards left on the board when the deck ran out and no trio
+    /// remained. Nil when the run ended for another reason (e.g. timer
+    /// expiry), in which case the line is hidden.
+    var strandedCardCount: Int? = nil
     let onPlayAgain: () -> Void
     let onChangeMode: () -> Void
 
@@ -36,6 +40,9 @@ struct GameOverSheet: View {
 
                 statsBadges
                     .padding(.top, 8)
+
+                deckClearedLine
+                    .padding(.top, 4)
             }
 
             VStack(spacing: 12) {
@@ -126,6 +133,24 @@ struct GameOverSheet: View {
         .background(iconColor.opacity(0.15), in: .capsule)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibility)
+    }
+
+    @ViewBuilder
+    private var deckClearedLine: some View {
+        if let stranded = strandedCardCount {
+            if stranded == 0 {
+                Label("Perfect clear — every card found a trio.", systemImage: "checkmark.seal.fill")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.green)
+                    .multilineTextAlignment(.center)
+            } else {
+                Text("Cleared the deck — \(stranded) \(stranded == 1 ? "card" : "cards") stranded with no valid trio.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 8)
+            }
+        }
     }
 
     @ViewBuilder
