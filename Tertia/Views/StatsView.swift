@@ -13,37 +13,28 @@ struct StatsView: View {
 
     let onPlayTimeAttack: () -> Void
 
-    @State private var viewModel: StatsViewModel?
-
     var body: some View {
-        NavigationStack {
-            StatsContent(
-                viewModel: viewModel,
-                onPlayTimeAttack: onPlayTimeAttack
-            )
-            .boardBackground()
-            .navigationTitle("Stats")
-            .onAppear {
-                if viewModel == nil {
-                    viewModel = StatsViewModel(
-                        highScoreStore: highScoreStore,
-                        dailyStore: dailyStore
-                    )
-                }
-            }
-        }
+        StatsBody(
+            viewModel: StatsViewModel(
+                highScoreStore: highScoreStore,
+                dailyStore: dailyStore
+            ),
+            onPlayTimeAttack: onPlayTimeAttack
+        )
     }
 }
 
-// MARK: - Top-level content switch
+// MARK: - Body wrapper (so the NavigationStack and StatsScroll can take the VM by value)
 
-private struct StatsContent: View {
-    let viewModel: StatsViewModel?
+private struct StatsBody: View {
+    let viewModel: StatsViewModel
     let onPlayTimeAttack: () -> Void
 
     var body: some View {
-        if let viewModel {
+        NavigationStack {
             StatsScroll(viewModel: viewModel, onPlayTimeAttack: onPlayTimeAttack)
+                .boardBackground()
+                .navigationTitle("Stats")
         }
     }
 }
