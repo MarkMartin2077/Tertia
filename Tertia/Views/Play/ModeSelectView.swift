@@ -18,10 +18,17 @@ struct ModeSelectView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 header
-                dailyHero
+                if !dailyStore.isHeroDismissedToday {
+                    dailyHero
+                        .transition(.asymmetric(
+                            insertion: .opacity.combined(with: .scale(scale: 0.96)),
+                            removal: .opacity.combined(with: .move(edge: .top))
+                        ))
+                }
                 freePlaySection
             }
             .padding(.bottom, 32)
+            .animation(.spring(response: 0.4, dampingFraction: 0.85), value: dailyStore.isHeroDismissedToday)
         }
         .boardBackground()
     }
@@ -46,7 +53,8 @@ struct ModeSelectView: View {
         DailyHeroCard(
             dateText: dateText,
             status: dailyStatus,
-            onPlay: { onSelect(.daily) }
+            onPlay: { onSelect(.daily) },
+            onDismiss: dailyStore.hasPlayedToday ? { dailyStore.dismissHeroForToday() } : nil
         )
         .padding(.horizontal, 20)
     }

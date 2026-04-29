@@ -24,6 +24,7 @@ final class DailyStore {
     private(set) var currentStreak: Int = 0
     private(set) var bestStreak: Int = 0
     private(set) var todaysRecord: DailyRecord?
+    private(set) var dismissedDay: Date?
 
     init(userDefaults: UserDefaults = .standard, calendar: Calendar = .current) {
         self.userDefaults = userDefaults
@@ -34,6 +35,16 @@ final class DailyStore {
 
     var hasPlayedToday: Bool {
         todaysRecord != nil
+    }
+
+    var isHeroDismissedToday: Bool {
+        guard let dismissedDay else { return false }
+        return calendar.isDateInToday(dismissedDay)
+    }
+
+    func dismissHeroForToday(on date: Date = .now) {
+        dismissedDay = calendar.startOfDay(for: date)
+        save()
     }
 
     /// Streak shown to the user. Returns 0 if the user has skipped a day, even
@@ -78,6 +89,7 @@ final class DailyStore {
         currentStreak = 0
         bestStreak = 0
         todaysRecord = nil
+        dismissedDay = nil
         userDefaults.removeObject(forKey: storageKey)
     }
 
@@ -86,6 +98,9 @@ final class DailyStore {
         let today = calendar.startOfDay(for: .now)
         if let record = todaysRecord, !calendar.isDate(record.day, inSameDayAs: today) {
             todaysRecord = nil
+        }
+        if let day = dismissedDay, !calendar.isDate(day, inSameDayAs: today) {
+            dismissedDay = nil
         }
     }
 
@@ -96,6 +111,30 @@ final class DailyStore {
         let currentStreak: Int
         let bestStreak: Int
         let todaysRecord: DailyRecord?
+        let dismissedDay: Date?
+
+        init(
+            lastPlayedDate: Date?,
+            currentStreak: Int,
+            bestStreak: Int,
+            todaysRecord: DailyRecord?,
+            dismissedDay: Date?
+        ) {
+            self.lastPlayedDate = lastPlayedDate
+            self.currentStreak = currentStreak
+            self.bestStreak = bestStreak
+            self.todaysRecord = todaysRecord
+            self.dismissedDay = dismissedDay
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            self.lastPlayedDate = try c.decodeIfPresent(Date.self, forKey: .lastPlayedDate)
+            self.currentStreak = try c.decodeIfPresent(Int.self, forKey: .currentStreak) ?? 0
+            self.bestStreak = try c.decodeIfPresent(Int.self, forKey: .bestStreak) ?? 0
+            self.todaysRecord = try c.decodeIfPresent(DailyRecord.self, forKey: .todaysRecord)
+            self.dismissedDay = try c.decodeIfPresent(Date.self, forKey: .dismissedDay)
+        }
     }
 
     private func load() {
@@ -107,6 +146,7 @@ final class DailyStore {
         currentStreak = decoded.currentStreak
         bestStreak = decoded.bestStreak
         todaysRecord = decoded.todaysRecord
+        dismissedDay = decoded.dismissedDay
     }
 
     private func save() {
@@ -114,7 +154,8 @@ final class DailyStore {
             lastPlayedDate: lastPlayedDate,
             currentStreak: currentStreak,
             bestStreak: bestStreak,
-            todaysRecord: todaysRecord
+            todaysRecord: todaysRecord,
+            dismissedDay: dismissedDay
         )
         guard let data = try? JSONEncoder().encode(snapshot) else { return }
         userDefaults.set(data, forKey: storageKey)

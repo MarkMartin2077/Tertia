@@ -16,6 +16,7 @@ struct DailyHeroCard: View {
     let dateText: String
     let status: Status
     let onPlay: () -> Void
+    var onDismiss: (() -> Void)? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -67,15 +68,29 @@ struct DailyHeroCard: View {
                 .background(Color.green.opacity(0.22), in: .capsule)
                 .foregroundStyle(.green)
         case .completed:
-            HStack(spacing: 4) {
-                Image(systemName: "checkmark.circle.fill")
-                Text("DONE")
-                    .font(.caption.bold())
+            HStack(spacing: 8) {
+                HStack(spacing: 4) {
+                    Image(systemName: "checkmark.circle.fill")
+                    Text("DONE")
+                        .font(.caption.bold())
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .background(Color.green.opacity(0.22), in: .capsule)
+                .foregroundStyle(.green)
+
+                if let onDismiss {
+                    Button(action: onDismiss) {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.title3)
+                            .foregroundStyle(.purple.opacity(0.55))
+                            .symbolRenderingMode(.hierarchical)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Hide today's puzzle")
+                    .accessibilityHint("Hides the daily puzzle card until tomorrow")
+                }
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 4)
-            .background(Color.green.opacity(0.22), in: .capsule)
-            .foregroundStyle(.green)
         }
     }
 
