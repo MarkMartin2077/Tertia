@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import GameKit
 
 struct StatsView: View {
     @Environment(HighScoreStore.self) private var highScoreStore
@@ -159,10 +160,24 @@ private struct DailySection: View {
 
 private struct TimeAttackSection: View {
     let viewModel: StatsViewModel
+    @Environment(GameCenterService.self) private var gameCenter
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            SectionHeading(title: "Time Attack", color: .orange, systemImage: "timer")
+            HStack {
+                SectionHeading(title: "Time Attack", color: .orange, systemImage: "timer")
+                if gameCenter.isAuthenticated {
+                    Button {
+                        GKAccessPoint.shared.trigger(state: .leaderboards) { }
+                    } label: {
+                        Label("Leaderboard", systemImage: "trophy.fill")
+                            .labelStyle(.iconOnly)
+                            .font(.title3)
+                            .foregroundStyle(.orange)
+                    }
+                    .accessibilityLabel("Open Game Center leaderboard")
+                }
+            }
 
             HStack(spacing: 16) {
                 StatTile(
@@ -222,14 +237,16 @@ private struct StatTile: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 6) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Image(systemName: icon)
                     .foregroundStyle(tint)
+                    .imageScale(.small)
                 Text(label)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.85)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.75)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             Text(value)
                 .font(.title.bold())
@@ -338,6 +355,7 @@ private struct RankBadge: View {
     StatsView(onPlay: { _ in })
         .environment(HighScoreStore())
         .environment(DailyStore())
+        .environment(GameCenterService())
 }
 
 #Preview("Populated") {

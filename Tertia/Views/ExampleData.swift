@@ -25,19 +25,21 @@ enum ExampleData {
     ]
 
     /// Mixed valid trio: two attributes all-different (shape, count), two
-    /// all-same (color, fill). Demonstrates per-attribute independence.
+    /// all-same (color, fill). Demonstrates per-attribute independence. Uses
+    /// green so it reads visually distinct from the all-red first example.
     static let mixedSet: [SetCard] = [
-        SetCard(shape: .circle, count: .one, color: .red, fill: .filled),
-        SetCard(shape: .square, count: .two, color: .red, fill: .filled),
-        SetCard(shape: .triangle, count: .three, color: .red, fill: .filled)
+        SetCard(shape: .circle, count: .one, color: .green, fill: .filled),
+        SetCard(shape: .square, count: .two, color: .green, fill: .filled),
+        SetCard(shape: .triangle, count: .three, color: .green, fill: .filled)
     ]
 
     /// Non-trio: all three cards are distinct, counts are all-different, but
     /// fill is two-filled-one-empty — breaks the rule on a single attribute.
+    /// Uses blue to differentiate from the red trio examples.
     static let mixedFillNonSet: [SetCard] = [
-        SetCard(shape: .circle, count: .one, color: .red, fill: .filled),
-        SetCard(shape: .circle, count: .two, color: .red, fill: .filled),
-        SetCard(shape: .circle, count: .three, color: .red, fill: .empty)
+        SetCard(shape: .circle, count: .one, color: .blue, fill: .filled),
+        SetCard(shape: .circle, count: .two, color: .blue, fill: .filled),
+        SetCard(shape: .circle, count: .three, color: .blue, fill: .empty)
     ]
 
     /// Non-trio: all three cards are distinct, shapes are all-different, but

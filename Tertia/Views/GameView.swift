@@ -19,6 +19,7 @@ struct GameView: View {
     @Environment(HighScoreStore.self) private var highScoreStore
     @Environment(DailyStore.self) private var dailyStore
     @Environment(FeedbackService.self) private var feedback
+    @Environment(GameCenterService.self) private var gameCenter
 
     @State private var showNewGameConfirm = false
     @State private var showNoHintAlert = false
@@ -31,6 +32,13 @@ struct GameView: View {
     @State private var dealOverlayPulse = false
     @State private var didFireTimerWarning = false
     @State private var hasHandledExpiry = false
+
+    /// Time Attack start-of-round countdown. `nil` when no countdown is
+    /// running; otherwise holds the current "3 / 2 / 1" value.
+    @State private var countdownValue: Int? = nil
+    /// Guards against re-running the start countdown on scene resume — the
+    /// 3-2-1 plays once per game session.
+    @State private var hasRunStartCountdown = false
 
     // Practice slow-glow hint
     @State private var lastInteractionTime: Date = .now
@@ -111,6 +119,10 @@ struct GameView: View {
                     }
                     .animation(.spring(response: 0.45, dampingFraction: 0.78), value: shouldShowDealThreeOverlay)
             }
+            .overlay {
+                CountdownOverlay(value: countdownValue)
+                    .allowsHitTesting(false)
+            }
             .boardBackground()
             .opacity(showGameOver ? 0.5 : 1.0)
             .blur(radius: showGameOver ? 2 : 0)
@@ -154,7 +166,7 @@ struct GameView: View {
                 titleVisibility: .visible
             ) {
                 Button("Leave", role: .destructive) {
-                    onExit()
+                    exitGame()
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
@@ -199,15 +211,7 @@ struct GameView: View {
                     await runDealAnimation()
                     if game.boardSlots.count >= SetGame.boardSize {
                         hasDealtInitialBoard = true
-                        // Only start the timer if the scene is active. If the
-                        // user backgrounded mid-deal, handleScenePhase(.active)
-                        // will start it on resume — avoids a one-tick leak.
-                        if mode.usesTimer,
-                           let controller,
-                           !controller.hasStarted,
-                           scenePhase == .active {
-                            controller.start()
-                        }
+                        await startTimerIfNeeded()
                     }
                 }
                 async let timer: Void = runTimerWatcher()
@@ -427,7 +431,7 @@ struct GameView: View {
                 if game.score > 0 {
                     showExitConfirm = true
                 } else {
-                    onExit()
+                    exitGame()
                 }
             }
         }
@@ -440,6 +444,7 @@ struct GameView: View {
                         startNewGame()
                     }
                 }
+                .disabled(countdownValue != nil)
             }
             if mode.allowsHint {
                 Button("Hint", systemImage: "lightbulb") {
@@ -499,7 +504,18 @@ struct GameView: View {
 
     // MARK: - Actions
 
+    /// Cleans up transient overlay state before letting the parent dismiss
+    /// us. Without this, the running countdown can collide with the parent's
+    /// transition animation and freeze the screen.
+    private func exitGame() {
+        cancelCountdown()
+        onExit()
+    }
+
     private func startNewGame() {
+        // Tear down the countdown overlay BEFORE incrementing taskTrigger so
+        // the old task's animations don't overlap with the new deal animation.
+        cancelCountdown()
         game.clearBoard()
         if mode.usesTimer {
             controller = TimeAttackController()
@@ -557,7 +573,7 @@ struct GameView: View {
             // If the user backgrounded mid-deal, the .task block skipped the
             // initial start() — kick it off now that we're foregrounded.
             if hasDealtInitialBoard, !controller.hasStarted {
-                controller.start()
+                Task { await startTimerIfNeeded() }
             } else {
                 controller.resume()
             }
@@ -566,6 +582,64 @@ struct GameView: View {
         @unknown default:
             break
         }
+    }
+
+    /// Plays the 3-2-1 countdown (once per game) then starts the timer.
+    /// Skipped when the scene isn't active, so backgrounding mid-deal still
+    /// defers to the scene-active path on return.
+    ///
+    /// Critical ordering: `hasRunStartCountdown` is set to `true` ONLY after
+    /// the cancellation guard, so a cancelled run (New Game / exit) doesn't
+    /// stomp on the fresh state the next start will rely on.
+    private func startTimerIfNeeded() async {
+        guard mode.usesTimer,
+              let controller,
+              !controller.hasStarted,
+              scenePhase == .active else { return }
+
+        if !hasRunStartCountdown {
+            await runStartCountdown()
+            // Bail if the task was cancelled or scene went inactive during
+            // the countdown. Do NOT flip hasRunStartCountdown — leaving it
+            // false lets a follow-up start (New Game, scene resume) play
+            // the countdown fresh.
+            guard !Task.isCancelled, scenePhase == .active else {
+                countdownValue = nil
+                return
+            }
+            hasRunStartCountdown = true
+        }
+
+        controller.start()
+    }
+
+    /// Plays the 3-2-1 overlay. Each iteration explicitly checks for
+    /// cancellation before mutating UI state, so a New Game during the
+    /// countdown doesn't briefly flash the next number on its way out.
+    private func runStartCountdown() async {
+        for step in [3, 2, 1] {
+            guard !Task.isCancelled else {
+                countdownValue = nil
+                return
+            }
+            countdownValue = step
+            feedback.cardTap()
+            do {
+                try await Task.sleep(for: .milliseconds(800))
+            } catch {
+                countdownValue = nil
+                return
+            }
+        }
+        countdownValue = nil
+    }
+
+    /// Clears any in-flight countdown UI state. Call before mutating
+    /// `taskTrigger` so the parent task's cancellation doesn't race with
+    /// the next task's animations.
+    private func cancelCountdown() {
+        countdownValue = nil
+        hasRunStartCountdown = false
     }
 
     private func handleTimerExpiry() {
@@ -586,6 +660,7 @@ struct GameView: View {
             let priorBest = highScoreStore.bestScore(forDuration: duration) ?? 0
             wasNewBest = finalScore > priorBest && finalScore > 0
             highScoreStore.record(score: finalScore, durationSeconds: duration)
+            Task { await gameCenter.submitTimeAttackScore(finalScore) }
         default:
             break
         }
@@ -600,15 +675,13 @@ struct GameView: View {
 
     private func runTimerWatcher() async {
         guard mode.usesTimer, let controller else { return }
-        // Contract: callers must ensure the controller has started. The .task
-        // in `body` does this after the deal animation completes; if the scene
-        // was inactive at that moment, handleScenePhase(.active) starts it on
-        // resume. If we get here without a started controller, the watcher is
-        // a no-op and a foreground transition will trigger a new task.
-        assert(
-            controller.hasStarted || scenePhase != .active,
-            "runTimerWatcher reached while active but controller never started"
-        )
+        // The watcher is a no-op until the controller starts. There are
+        // legitimate reasons we can land here without a started controller:
+        // - Backgrounded mid-deal (resume will trigger a fresh start)
+        // - User exited mid-countdown (task was just cancelled, view is
+        //   about to dismiss)
+        // - First entry while the countdown is still running
+        // In every case, returning early is the correct behavior.
         guard controller.hasStarted else { return }
         while !controller.isFinished {
             if !didFireTimerWarning && controller.remaining <= 10 && !controller.isPaused {
@@ -657,6 +730,30 @@ struct GameView: View {
         .environment(HighScoreStore())
         .environment(DailyStore())
         .environment(FeedbackService())
+        .environment(GameCenterService())
+}
+
+private struct CountdownOverlay: View {
+    let value: Int?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    @ViewBuilder
+    var body: some View {
+        if let value {
+            Text("\(value)")
+                .font(.system(size: 140, weight: .heavy, design: .rounded))
+                .monospacedDigit()
+                .foregroundStyle(.white)
+                .frame(width: 200, height: 200)
+                .background(Color.black.opacity(0.6), in: .circle)
+                .shadow(color: .black.opacity(0.35), radius: 20, y: 8)
+                .id(value)
+                .transition(reduceMotion
+                    ? .opacity
+                    : .scale(scale: 1.5).combined(with: .opacity))
+                .accessibilityLabel("Starting in \(value)")
+        }
+    }
 }
 
 private struct PointsToast: View {

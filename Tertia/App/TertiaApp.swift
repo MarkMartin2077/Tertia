@@ -13,6 +13,7 @@ struct TertiaApp: App {
     @State private var highScoreStore: HighScoreStore
     @State private var dailyStore: DailyStore
     @State private var feedback = FeedbackService()
+    @State private var gameCenter = GameCenterService()
 
     init() {
         let high = HighScoreStore()
@@ -29,6 +30,34 @@ struct TertiaApp: App {
                 .environment(highScoreStore)
                 .environment(dailyStore)
                 .environment(feedback)
+                .environment(gameCenter)
+                .gameCenterAuthenticationCover(service: gameCenter)
+                .task {
+                    gameCenter.authenticate()
+                }
         }
     }
+}
+
+private extension View {
+    func gameCenterAuthenticationCover(service: GameCenterService) -> some View {
+        fullScreenCover(
+            isPresented: Binding(
+                get: { service.pendingAuthenticationViewController != nil },
+                set: { if !$0 { service.pendingAuthenticationViewController = nil } }
+            )
+        ) {
+            if let viewController = service.pendingAuthenticationViewController {
+                GameCenterAuthenticationContainer(viewController: viewController)
+                    .ignoresSafeArea()
+            }
+        }
+    }
+}
+
+private struct GameCenterAuthenticationContainer: UIViewControllerRepresentable {
+    let viewController: UIViewController
+
+    func makeUIViewController(context: Context) -> UIViewController { viewController }
+    func updateUIViewController(_ uiViewController: UIViewController, context: Context) {}
 }

@@ -37,6 +37,8 @@ struct OnboardingView: View {
             .tabViewStyle(.page(indexDisplayMode: .always))
             .indexViewStyle(.page(backgroundDisplayMode: .always))
         }
+        .background(Color("LaunchBackground").ignoresSafeArea())
+        .tint(.purple)
     }
 
     private func complete() {
@@ -47,27 +49,56 @@ struct OnboardingView: View {
 // MARK: - Slides
 
 private struct WelcomeSlide: View {
+    @State private var cardsRevealed = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private static let exampleCards: [SetCard] = [
+        SetCard(shape: .circle, count: .one, color: .red, fill: .filled),
+        SetCard(shape: .square, count: .two, color: .green, fill: .empty),
+        SetCard(shape: .triangle, count: .three, color: .blue, fill: .rightHalf)
+    ]
+
     var body: some View {
-        VStack(spacing: 24) {
+        VStack(spacing: 28) {
             Spacer()
-            Text("Welcome to Tertia")
-                .font(.largeTitle.bold())
-                .multilineTextAlignment(.center)
-            Text("A pattern-matching game with 81 cards across four attributes.")
+
+            VStack(spacing: 12) {
+                Text("Tertia")
+                    .font(.system(size: 56, weight: .heavy, design: .rounded))
+                    .tracking(-1)
+                Text("Welcome")
+                    .font(.title2.weight(.medium))
+                    .foregroundStyle(.secondary)
+            }
+
+            Text("A pattern-matching card game.\nFind the trio. Train your eye.")
                 .font(.body)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
 
             HStack(spacing: 10) {
-                ExampleCard(card: SetCard(shape: .circle, count: .one, color: .red, fill: .filled))
-                ExampleCard(card: SetCard(shape: .square, count: .two, color: .green, fill: .empty))
-                ExampleCard(card: SetCard(shape: .triangle, count: .three, color: .blue, fill: .rightHalf))
+                ForEach(Self.exampleCards.enumerated(), id: \.element.id) { index, card in
+                    ExampleCard(card: card)
+                        .scaleEffect(cardsRevealed ? 1 : 0.6)
+                        .opacity(cardsRevealed ? 1 : 0)
+                        .animation(
+                            reduceMotion
+                                ? .none
+                                : .spring(response: 0.55, dampingFraction: 0.78)
+                                    .delay(0.1 + Double(index) * 0.12),
+                            value: cardsRevealed
+                        )
+                }
             }
             .padding(.horizontal, 40)
 
             Spacer()
             Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onAppear {
+            cardsRevealed = true
         }
     }
 }
@@ -111,6 +142,7 @@ private struct RuleSlide: View {
                 .padding(.horizontal, 28)
             }
             .padding(.bottom, 24)
+            .onboardingContentWidth()
         }
         .scrollBounceBehavior(.basedOnSize)
     }
@@ -159,6 +191,7 @@ private struct ValidSetsSlide: View {
                 .padding(.horizontal, 24)
             }
             .padding(.bottom, 24)
+            .onboardingContentWidth()
         }
         .scrollBounceBehavior(.basedOnSize)
     }
@@ -195,6 +228,7 @@ private struct NonSetsSlide: View {
                 .padding(.horizontal, 24)
             }
             .padding(.bottom, 24)
+            .onboardingContentWidth()
         }
         .scrollBounceBehavior(.basedOnSize)
     }
@@ -244,6 +278,7 @@ private struct ScoringSlide: View {
                 .padding(.top, 4)
             }
             .padding(.bottom, 24)
+            .onboardingContentWidth()
         }
         .scrollBounceBehavior(.basedOnSize)
     }
@@ -255,23 +290,32 @@ private struct PointsRow: View {
     let label: String
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 16) {
             Text("+\(points)")
-                .font(.title2.bold())
+                .font(.title.bold())
                 .monospacedDigit()
                 .foregroundStyle(.green)
-                .frame(width: 44, alignment: .leading)
-            HStack(spacing: 6) {
+                .frame(width: 56, alignment: .leading)
+            HStack(spacing: 10) {
                 ForEach(cards) { card in
                     ExampleCard(card: card)
-                        .frame(width: 44, height: 44)
+                        .frame(width: 64, height: 64)
                 }
             }
             Spacer(minLength: 0)
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, 8)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Worth \(points) points: \(label)")
+    }
+}
+
+private extension View {
+    /// Caps onboarding slide content to a comfortable reading width on iPad
+    /// while still filling the screen on iPhone.
+    func onboardingContentWidth() -> some View {
+        frame(maxWidth: 600)
+            .frame(maxWidth: .infinity, alignment: .center)
     }
 }
 
