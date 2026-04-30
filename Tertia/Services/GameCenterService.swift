@@ -63,6 +63,11 @@ final class GameCenterService {
     /// calls `clearPendingActivityRequest` to consume it.
     private(set) var pendingActivityRequest: GameActivityRequest?
 
+    /// Guard against double-registering the activity listener. GameKit's auth
+    /// handler can fire repeatedly across a session (account switches, scene
+    /// transitions); register once and stay registered.
+    private var hasRegisteredActivityListener = false
+
     init() {
         activityListener.onActivityRequest = { [weak self] activityID in
             Task { @MainActor [weak self] in
@@ -105,20 +110,26 @@ final class GameCenterService {
     /// logged out, prompt shown). Safe to call once at app launch.
     func authenticate() {
         GKLocalPlayer.local.authenticateHandler = { [weak self] viewController, error in
-            guard let self else { return }
-            self.hasCompletedFirstAttempt = true
-            self.pendingAuthenticationViewController = viewController
-            self.isAuthenticated = GKLocalPlayer.local.isAuthenticated
-            self.localPlayerDisplayName = GKLocalPlayer.local.isAuthenticated
-                ? GKLocalPlayer.local.displayName
-                : nil
-            self.lastErrorMessage = error?.localizedDescription
+            // GameKit calls this on the main thread today, but Apple doesn't
+            // commit to that in the Swift concurrency contract. Hop to
+            // @MainActor explicitly so all @Observable mutations are on a
+            // documented isolation boundary.
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.hasCompletedFirstAttempt = true
+                self.pendingAuthenticationViewController = viewController
+                self.isAuthenticated = GKLocalPlayer.local.isAuthenticated
+                self.localPlayerDisplayName = GKLocalPlayer.local.isAuthenticated
+                    ? GKLocalPlayer.local.displayName
+                    : nil
+                self.lastErrorMessage = error?.localizedDescription
 
-            // Register activity listener once authenticated so iOS knows where
-            // to deliver "user tapped Play in Game Center" callbacks.
-            if GKLocalPlayer.local.isAuthenticated {
-                GKLocalPlayer.local.register(self.activityListener)
-                logger.info("Registered GKGameActivityListener for local player")
+                // Register activity listener once per session.
+                if GKLocalPlayer.local.isAuthenticated, !self.hasRegisteredActivityListener {
+                    GKLocalPlayer.local.register(self.activityListener)
+                    self.hasRegisteredActivityListener = true
+                    logger.info("Registered GKGameActivityListener for local player")
+                }
             }
         }
     }

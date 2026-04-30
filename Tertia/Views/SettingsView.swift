@@ -178,4 +178,5 @@ private struct ExternalLinkRow: View {
 
 #Preview {
     SettingsView()
+        .environment(GameCenterService())
 }
