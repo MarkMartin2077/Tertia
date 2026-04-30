@@ -2,6 +2,8 @@
 
 **Find the trio. Train your eye. Build a streak.**
 
+[Available on the App Store →](https://apps.apple.com/us/app/tertia/id6764515108)
+
 Love games like **Set**? Tertia is a fast, focused pattern-matching card game built for iPhone and iPad — the same brain-tickling "are they all the same or all different?" puzzle, dressed up with combos, a daily challenge, and a learn-by-playing mode that explains every wrong answer. Easy to learn, fiendish to play under a clock.
 
 ---
