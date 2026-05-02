@@ -7,7 +7,7 @@
 
 import Foundation
 
-nonisolated enum CardCount: CaseIterable {
+nonisolated enum CardCount: String, CaseIterable, Codable {
     case one, two, three
 
     var displayName: String {

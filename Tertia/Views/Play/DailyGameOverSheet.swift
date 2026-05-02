@@ -15,6 +15,9 @@ struct DailyGameOverSheet: View {
     var fastestSetSeconds: Double? = nil
     var longestStreak: Int? = nil
     var strandedCardCount: Int? = nil
+    var totalTriosFound: Int = 0
+    var gameDurationSeconds: Double? = nil
+    var averageTimeBetweenSetsSeconds: Double? = nil
     let onChangeMode: () -> Void
 
     private var dateText: String {
@@ -26,7 +29,7 @@ struct DailyGameOverSheet: View {
     private var shareText: String {
         var lines = [
             "🟪 Tertia Daily — \(dateText)",
-            "🎯 \(score) \(score == 1 ? "trio" : "trios")"
+            "🎯 " + String(localized: "^[\(score) trio](inflect: true)")
         ]
         if streak > 1 {
             lines.append("🔥 \(streak)-day streak")
@@ -39,7 +42,7 @@ struct DailyGameOverSheet: View {
             VStack(spacing: 8) {
                 Text("Today's Puzzle")
                     .font(.largeTitle.bold())
-                Text("You found \(score) \(score == 1 ? "trio" : "trios")")
+                Text("^[You found \(score) trio](inflect: true)")
                     .font(.title3)
                     .foregroundStyle(.secondary)
 
@@ -59,6 +62,13 @@ struct DailyGameOverSheet: View {
                 statsBadges
                     .padding(.top, 8)
 
+                GameSummaryStats(
+                    totalTriosFound: totalTriosFound,
+                    gameDurationSeconds: gameDurationSeconds,
+                    averageTimeBetweenSetsSeconds: averageTimeBetweenSetsSeconds
+                )
+                .padding(.top, 12)
+
                 DeckClearedLine(strandedCardCount: strandedCardCount)
                     .padding(.top, 4)
             }
@@ -73,7 +83,7 @@ struct DailyGameOverSheet: View {
                 .tint(.purple)
 
                 Button(action: onChangeMode) {
-                    Text("Change Mode")
+                    Text("Done")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
@@ -86,11 +96,21 @@ struct DailyGameOverSheet: View {
         }
         .padding(32)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .overlay(alignment: .topTrailing) {
+            Button(action: onChangeMode) {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.title2)
+                    .foregroundStyle(.secondary)
+                    .symbolRenderingMode(.hierarchical)
+            }
+            .padding(16)
+            .accessibilityLabel("Close")
+        }
         .accessibilityAddTraits(.isModal)
         .onAppear {
             UIAccessibility.post(
                 notification: .announcement,
-                argument: "Today's puzzle complete. You found \(score) \(score == 1 ? "trio" : "trios")."
+                argument: "Today's puzzle complete. " + String(localized: "^[You found \(score) trio](inflect: true).")
             )
         }
     }

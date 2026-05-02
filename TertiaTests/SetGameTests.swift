@@ -482,6 +482,101 @@ struct SetGameTests {
         #expect(game.multiplier == 2)
     }
 
+    // MARK: - Game-duration & trio counters
+
+    @Test("totalSetsFound increments per valid trio")
+    func totalSetsFoundIncrements() {
+        let game = SetGame(mode: .normal)
+        let t0 = Date()
+        game.newGame(now: t0)
+        #expect(game.totalSetsFound == 0)
+
+        for (i, c) in Self.validSet.enumerated() { game.boardSlots[i] = c }
+        for c in Self.validSet { game.select(c, now: t0) }
+        #expect(game.totalSetsFound == 1)
+
+        for (i, c) in Self.validSet2.enumerated() { game.boardSlots[i] = c }
+        for c in Self.validSet2 { game.select(c, now: t0.addingTimeInterval(2)) }
+        #expect(game.totalSetsFound == 2)
+    }
+
+    @Test("Invalid trios do not bump totalSetsFound")
+    func invalidTriosDontBumpCounter() {
+        let game = SetGame(mode: .normal)
+        let t0 = Date()
+        game.newGame(now: t0)
+        for (i, c) in Self.invalidTrio.enumerated() { game.boardSlots[i] = c }
+        for c in Self.invalidTrio { game.select(c, now: t0) }
+        #expect(game.totalSetsFound == 0)
+    }
+
+    @Test("gameDurationSeconds advances until markGameEnded freezes it")
+    func gameDurationFreezesOnEnd() {
+        let game = SetGame(mode: .normal)
+        let t0 = Date()
+        game.newGame(now: t0)
+
+        // Land a valid set so registerValidSet bookkeeping is exercised, then
+        // freeze duration explicitly.
+        for (i, c) in Self.validSet.enumerated() { game.boardSlots[i] = c }
+        for c in Self.validSet { game.select(c, now: t0.addingTimeInterval(10)) }
+        game.markGameEnded(at: t0.addingTimeInterval(42))
+
+        #expect(game.gameDurationSeconds == 42)
+    }
+
+    @Test("markGameEnded is idempotent — only first call wins")
+    func markGameEndedIsIdempotent() {
+        let game = SetGame(mode: .normal)
+        let t0 = Date()
+        game.newGame(now: t0)
+        game.markGameEnded(at: t0.addingTimeInterval(30))
+        game.markGameEnded(at: t0.addingTimeInterval(120))
+
+        #expect(game.gameDurationSeconds == 30)
+    }
+
+    @Test("averageTimeBetweenSetsSeconds is duration / trio count")
+    func averageDividesDurationByTrios() {
+        let game = SetGame(mode: .normal)
+        let t0 = Date()
+        game.newGame(now: t0)
+
+        // Two trios, then end the game at 60s — average should be 30s.
+        for (i, c) in Self.validSet.enumerated() { game.boardSlots[i] = c }
+        for c in Self.validSet { game.select(c, now: t0.addingTimeInterval(20)) }
+        for (i, c) in Self.validSet2.enumerated() { game.boardSlots[i] = c }
+        for c in Self.validSet2 { game.select(c, now: t0.addingTimeInterval(40)) }
+        game.markGameEnded(at: t0.addingTimeInterval(60))
+
+        #expect(game.averageTimeBetweenSetsSeconds == 30)
+    }
+
+    @Test("averageTimeBetweenSetsSeconds is nil before any trio is found")
+    func averageNilBeforeAnyTrio() {
+        let game = SetGame(mode: .normal)
+        game.markGameEnded(at: Date().addingTimeInterval(15))
+        #expect(game.averageTimeBetweenSetsSeconds == nil)
+    }
+
+    @Test("newGame resets totalSetsFound and clears game-end stamp")
+    func newGameResetsDurationStats() {
+        let game = SetGame(mode: .normal)
+        let t0 = Date()
+        game.newGame(now: t0)
+        for (i, c) in Self.validSet.enumerated() { game.boardSlots[i] = c }
+        for c in Self.validSet { game.select(c, now: t0.addingTimeInterval(5)) }
+        game.markGameEnded(at: t0.addingTimeInterval(10))
+
+        let t1 = t0.addingTimeInterval(100)
+        game.newGame(now: t1)
+
+        #expect(game.totalSetsFound == 0)
+        #expect(game.gameEndedAt == nil)
+        // Duration is now ticking from t1 forward — not from t0.
+        #expect((game.gameDurationSeconds ?? 0) < 1)
+    }
+
     @Test("newGame clears all combo and stats state")
     func newGameClearsAllSessionState() {
         let game = SetGame(mode: .normal)

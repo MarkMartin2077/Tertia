@@ -8,12 +8,8 @@
 //  ▸ EDIT THIS FILE each iteration. Add/remove test methods to capture only the
 //    screens you've just changed. Re-running overwrites the same filenames.
 //
-//  Current iteration: rules clarity + practice verdict + DEAL 3 overlay.
-//
-//  Note: PracticeVerdictBar and the DEAL 3 overlay need deterministic game
-//  state (a known-set or no-set initial board) to capture reliably. That seam
-//  is deferred — when needed, add a `--ui-test-deck=<token>` launch arg in
-//  SetGame and wire fixed decks here.
+//  Current iteration: Versus mode end-to-end (hero card on mode select,
+//  versus stats section).
 //
 
 import XCTest
@@ -25,51 +21,50 @@ final class RecentChangesTests: XCTestCase {
     }
 
     @MainActor
-    func testCaptureRuleSlide() throws {
+    private func launch() -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["-hasCompletedOnboarding", "0"]
+        app.launchArguments = [
+            "-hasCompletedOnboarding", "1",
+            "-screenshotMockData",
+            "-colorSchemePreference", "light"
+        ]
         app.launch()
-        XCTAssertTrue(app.staticTexts["Welcome to Tertia"].waitForExistence(timeout: 3))
-        app.swipeLeft()
-        XCTAssertTrue(app.staticTexts["What Makes a Set"].waitForExistence(timeout: 3))
-        capture("recent-onboarding-rule")
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let notNow = springboard.buttons["Not Now"]
+        if notNow.waitForExistence(timeout: 1) { notNow.tap() }
+        return app
     }
 
     @MainActor
-    func testCaptureNonSetsSlide() throws {
-        let app = XCUIApplication()
-        app.launchArguments = ["-hasCompletedOnboarding", "0"]
-        app.launch()
-        XCTAssertTrue(app.staticTexts["Welcome to Tertia"].waitForExistence(timeout: 3))
-        app.swipeLeft()
-        app.swipeLeft()
-        app.swipeLeft()
-        XCTAssertTrue(app.staticTexts["Not Sets"].waitForExistence(timeout: 3))
-        capture("recent-onboarding-non-sets")
+    func testCaptureModeSelectWithVersusHero() throws {
+        let app = launch()
+        XCTAssertTrue(app.staticTexts["Choose Mode"].waitForExistence(timeout: 3))
+        // VersusHeroCard renders the "Race a friend" headline.
+        XCTAssertTrue(app.staticTexts["Race a friend"].waitForExistence(timeout: 3))
+        capture("recent-mode-select-versus-hero")
     }
 
     @MainActor
-    func testCaptureRulesViewTop() throws {
-        let app = XCUIApplication()
-        app.launchArguments = ["-hasCompletedOnboarding", "1"]
-        app.launch()
-        app.buttons["Settings"].tap()
-        app.buttons["How to Play"].tap()
-        XCTAssertTrue(app.staticTexts["What is a Set?"].waitForExistence(timeout: 3))
-        capture("recent-rules-top")
-    }
-
-    @MainActor
-    func testCaptureRulesViewCommonMistake() throws {
-        let app = XCUIApplication()
-        app.launchArguments = ["-hasCompletedOnboarding", "1"]
-        app.launch()
-        app.buttons["Settings"].tap()
-        app.buttons["How to Play"].tap()
-        XCTAssertTrue(app.staticTexts["What is a Set?"].waitForExistence(timeout: 3))
-        // Scroll to surface the new "Common Mistake" section
+    func testCaptureStatsVersusSection() throws {
+        let app = launch()
+        app.buttons["Stats"].firstMatch.tap()
+        XCTAssertTrue(app.staticTexts["Stats"].waitForExistence(timeout: 5))
+        // Scroll down so the Versus section is fully on-screen — it lives
+        // below Daily and Time Attack.
         app.swipeUp()
         app.swipeUp()
-        capture("recent-rules-common-mistake")
+        Thread.sleep(forTimeInterval: 0.4)
+        capture("recent-stats-versus")
+    }
+
+    @MainActor
+    func testCaptureStatsTopWithVersus() throws {
+        // Captures the Stats tab landing — daily streak, time attack, and
+        // (depending on screen height) the top of the Versus section.
+        let app = launch()
+        app.buttons["Stats"].firstMatch.tap()
+        XCTAssertTrue(app.staticTexts["Stats"].waitForExistence(timeout: 5))
+        Thread.sleep(forTimeInterval: 0.5)
+        capture("recent-stats-top")
     }
 }

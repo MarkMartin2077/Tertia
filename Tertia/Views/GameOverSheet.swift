@@ -21,6 +21,9 @@ struct GameOverSheet: View {
     /// remained. Nil when the run ended for another reason (e.g. timer
     /// expiry), in which case the line is hidden.
     var strandedCardCount: Int? = nil
+    var totalTriosFound: Int = 0
+    var gameDurationSeconds: Double? = nil
+    var averageTimeBetweenSetsSeconds: Double? = nil
     let onPlayAgain: () -> Void
     let onChangeMode: () -> Void
 
@@ -29,7 +32,7 @@ struct GameOverSheet: View {
             VStack(spacing: 8) {
                 Text(title)
                     .font(.largeTitle.bold())
-                Text("You found \(score) \(score == 1 ? "trio" : "trios")")
+                Text("^[You found \(score) trio](inflect: true)")
                     .font(.title3)
                     .foregroundStyle(.secondary)
 
@@ -40,6 +43,13 @@ struct GameOverSheet: View {
 
                 statsBadges
                     .padding(.top, 8)
+
+                GameSummaryStats(
+                    totalTriosFound: totalTriosFound,
+                    gameDurationSeconds: gameDurationSeconds,
+                    averageTimeBetweenSetsSeconds: averageTimeBetweenSetsSeconds
+                )
+                .padding(.top, 12)
 
                 DeckClearedLine(strandedCardCount: strandedCardCount)
                     .padding(.top, 4)
@@ -54,7 +64,7 @@ struct GameOverSheet: View {
                 .controlSize(.large)
 
                 Button(action: onChangeMode) {
-                    Text("Change Mode")
+                    Text("Done")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
@@ -63,6 +73,16 @@ struct GameOverSheet: View {
         }
         .padding(32)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .overlay(alignment: .topTrailing) {
+            Button(action: onChangeMode) {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.title2)
+                    .foregroundStyle(.secondary)
+                    .symbolRenderingMode(.hierarchical)
+            }
+            .padding(16)
+            .accessibilityLabel("Close")
+        }
         .overlay {
             if mode == .timeAttack && isNewBest && score > 0 {
                 ConfettiView()
@@ -92,7 +112,7 @@ struct GameOverSheet: View {
     }
 
     private var announcement: String {
-        var base = "\(title) You found \(score) \(score == 1 ? "trio" : "trios")."
+        var base = "\(title) " + String(localized: "^[You found \(score) trio](inflect: true).")
         if mode == .timeAttack, isNewBest {
             base += " New personal best."
         }
@@ -201,7 +221,7 @@ struct DeckClearedLine: View {
                     .foregroundStyle(.green)
                     .multilineTextAlignment(.center)
             } else {
-                Text("Cleared the deck — \(stranded) \(stranded == 1 ? "card" : "cards") stranded with no valid trio.")
+                Text("^[Cleared the deck — \(stranded) card stranded](inflect: true) with no valid trio.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)

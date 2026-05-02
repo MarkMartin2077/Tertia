@@ -12,9 +12,10 @@ nonisolated enum GameMode: String, CaseIterable, Identifiable, Codable {
     case normal
     case timeAttack
     case daily
+    case versus
 
-    /// Modes shown in the regular Free Play list. Daily is surfaced separately
-    /// via the hero card.
+    /// Modes shown in the regular Free Play list. Daily and Versus are
+    /// surfaced separately via dedicated hero cards.
     static var regularModes: [GameMode] { [.practice, .normal, .timeAttack] }
 
     var id: String { rawValue }
@@ -25,6 +26,7 @@ nonisolated enum GameMode: String, CaseIterable, Identifiable, Codable {
         case .normal: return "Normal"
         case .timeAttack: return "Time Attack"
         case .daily: return "Daily Puzzle"
+        case .versus: return "Versus"
         }
     }
 
@@ -34,6 +36,7 @@ nonisolated enum GameMode: String, CaseIterable, Identifiable, Codable {
         case .normal: return "The classic experience. Hints available when you need them."
         case .timeAttack: return "5 minutes. No hints. Score as many sets as you can."
         case .daily: return "Same puzzle for everyone, refreshes daily."
+        case .versus: return "Race a friend on the same deck. First to claim each trio wins the points."
         }
     }
 
@@ -43,6 +46,7 @@ nonisolated enum GameMode: String, CaseIterable, Identifiable, Codable {
         case .normal: return "play.circle.fill"
         case .timeAttack: return "timer"
         case .daily: return "calendar"
+        case .versus: return "person.2.fill"
         }
     }
 
@@ -52,39 +56,40 @@ nonisolated enum GameMode: String, CaseIterable, Identifiable, Codable {
         case .normal: return .yellow
         case .timeAttack: return .orange
         case .daily: return .purple
+        case .versus: return .teal
         }
     }
 
     var allowsHint: Bool {
         switch self {
         case .practice, .normal, .daily: return true
-        case .timeAttack: return false
+        case .timeAttack, .versus: return false
         }
     }
 
     var allowsDealThree: Bool {
         switch self {
-        case .practice, .normal, .daily: return true
+        case .practice, .normal, .daily, .versus: return true
         case .timeAttack: return false
         }
     }
 
     var usesTimer: Bool {
         switch self {
-        case .practice, .normal, .daily: return false
+        case .practice, .normal, .daily, .versus: return false
         case .timeAttack: return true
         }
     }
 
     var tracksCombo: Bool {
         switch self {
-        case .practice, .normal, .timeAttack, .daily: return true
+        case .practice, .normal, .timeAttack, .daily, .versus: return true
         }
     }
 
     var awardsTimeBonus: Bool {
         switch self {
-        case .practice, .normal, .daily: return false
+        case .practice, .normal, .daily, .versus: return false
         case .timeAttack: return true
         }
     }

@@ -9,10 +9,12 @@ import SwiftUI
 
 struct ModeSelectView: View {
     @Environment(DailyStore.self) private var dailyStore
+    @Environment(VersusStore.self) private var versusStore
     @AppStorage("hasFinishedAnyGame") private var hasFinishedAnyGame: Bool = false
 
     let lastPlayed: GameMode?
     let onSelect: (GameMode) -> Void
+    let onVersus: (VersusMatchIntent) -> Void
 
     var body: some View {
         ScrollView {
@@ -25,6 +27,7 @@ struct ModeSelectView: View {
                             removal: .opacity.combined(with: .move(edge: .top))
                         ))
                 }
+                versusHero
                 freePlaySection
             }
             .padding(.bottom, 32)
@@ -55,6 +58,20 @@ struct ModeSelectView: View {
             status: dailyStatus,
             onPlay: { onSelect(.daily) },
             onDismiss: dailyStore.hasPlayedToday ? { dailyStore.dismissHeroForToday() } : nil
+        )
+        .padding(.horizontal, 20)
+    }
+
+    /// Versus entry point. CTAs produce a typed `VersusMatchIntent` so the
+    /// coordinator can route to the right matchmaking mode (auto-match vs
+    /// friend invite). Win/loss counts come from VersusStore so the card
+    /// surfaces real history once the player has played a match.
+    private var versusHero: some View {
+        VersusHeroCard(
+            wins: versusStore.winCount,
+            losses: versusStore.lossCount,
+            onQuickMatch: { onVersus(.quickMatch) },
+            onInviteFriend: { onVersus(.inviteFriend) }
         )
         .padding(.horizontal, 20)
     }
@@ -105,7 +122,7 @@ struct ModeSelectView: View {
         let date = formatter.string(from: record.day)
         var lines = [
             "🟪 Tertia Daily — \(date)",
-            "🎯 \(record.score) \(record.score == 1 ? "trio" : "trios")"
+            "🎯 " + String(localized: "^[\(record.score) trio](inflect: true)")
         ]
         let streak = dailyStore.displayedStreak
         if streak > 1 {
@@ -181,8 +198,11 @@ private struct ModeCard: View {
 }
 
 #Preview {
-    ModeSelectView(lastPlayed: .normal) { mode in
-        print("Selected: \(mode.title)")
-    }
+    ModeSelectView(
+        lastPlayed: .normal,
+        onSelect: { mode in print("Selected: \(mode.title)") },
+        onVersus: { intent in print("Versus: \(intent.rawValue)") }
+    )
     .environment(DailyStore())
+    .environment(VersusStore())
 }

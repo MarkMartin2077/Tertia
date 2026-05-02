@@ -12,15 +12,26 @@ struct TertiaApp: App {
     @AppStorage("colorSchemePreference") private var colorSchemePreference: ColorSchemePreference = .system
     @State private var highScoreStore: HighScoreStore
     @State private var dailyStore: DailyStore
+    @State private var sessionStore: GameSessionStore
+    @State private var versusStore: VersusStore
     @State private var feedback = FeedbackService()
     @State private var gameCenter = GameCenterService()
 
     init() {
         let high = HighScoreStore()
         let daily = DailyStore()
-        ScreenshotMockData.populateIfRequested(highScores: high, daily: daily)
+        let sessions = GameSessionStore()
+        let versus = VersusStore()
+        ScreenshotMockData.populateIfRequested(
+            highScores: high,
+            daily: daily,
+            sessions: sessions,
+            versus: versus
+        )
         _highScoreStore = State(initialValue: high)
         _dailyStore = State(initialValue: daily)
+        _sessionStore = State(initialValue: sessions)
+        _versusStore = State(initialValue: versus)
     }
 
     var body: some Scene {
@@ -29,6 +40,8 @@ struct TertiaApp: App {
                 .preferredColorScheme(colorSchemePreference.colorScheme)
                 .environment(highScoreStore)
                 .environment(dailyStore)
+                .environment(sessionStore)
+                .environment(versusStore)
                 .environment(feedback)
                 .environment(gameCenter)
                 .gameCenterAuthenticationCover(service: gameCenter)

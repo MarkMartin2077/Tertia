@@ -7,7 +7,7 @@
 
 import Foundation
 
-nonisolated enum CardShape: CaseIterable {
+nonisolated enum CardShape: String, CaseIterable, Codable {
     case circle, square, triangle
 
     var displayName: String {

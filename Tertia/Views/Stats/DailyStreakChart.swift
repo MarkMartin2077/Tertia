@@ -114,7 +114,7 @@ struct DailyStreakChart: View {
         formatter.dateStyle = .medium
         let dateText = formatter.string(from: day.date)
         if let score = day.score {
-            return Text("\(dateText): \(score) \(score == 1 ? "trio" : "trios")")
+            return Text("^[\(dateText): \(score) trio](inflect: true)")
         } else {
             return Text("\(dateText): no play")
         }

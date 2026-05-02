@@ -68,6 +68,14 @@ final class GameCenterService {
     /// transitions); register once and stay registered.
     private var hasRegisteredActivityListener = false
 
+    /// In-memory retry queue for score submissions that couldn't be delivered
+    /// (offline, signed-out, transient failure). Drained when authentication
+    /// succeeds and on every subsequent submit attempt.
+    ///
+    /// Exposed for testability: production callers shouldn't need to inspect
+    /// this directly, but unit tests verify enqueue behavior here.
+    private(set) var pendingScores = PendingScoreQueue()
+
     init() {
         activityListener.onActivityRequest = { [weak self] activityID in
             Task { @MainActor [weak self] in
@@ -130,6 +138,14 @@ final class GameCenterService {
                     self.hasRegisteredActivityListener = true
                     logger.info("Registered GKGameActivityListener for local player")
                 }
+
+                // Auth just succeeded (or re-fired while authenticated) — flush
+                // anything queued while the player was offline / signed out.
+                if self.isAuthenticated, !self.pendingScores.isEmpty {
+                    Task { @MainActor [weak self] in
+                        await self?.drainPendingScoreSubmissions()
+                    }
+                }
             }
         }
     }
@@ -166,20 +182,42 @@ final class GameCenterService {
     }
 
     private func submit(score: Int, to leaderboardID: String) async {
-        guard isAuthenticated, score > 0 else {
-            logger.info("Skipping submit \(score) to \(leaderboardID): not authenticated or score is zero")
-            return
+        guard score > 0 else { return }
+
+        // Always queue. drainPendingScoreSubmissions will deliver immediately
+        // if we're authenticated, or hold until the next auth callback / retry
+        // otherwise. Treating "fresh score" and "previously failed score" the
+        // same way keeps the retry logic in one place.
+        pendingScores.enqueue(score: score, for: leaderboardID)
+        await drainPendingScoreSubmissions()
+    }
+
+    /// Attempts to flush every queued score submission. Failures are
+    /// re-enqueued and retried on the next auth callback or submit attempt.
+    /// No-op when not authenticated — the auth handler will trigger a drain
+    /// once the player signs in.
+    func drainPendingScoreSubmissions() async {
+        guard isAuthenticated else { return }
+        guard !pendingScores.isEmpty else { return }
+
+        let snapshot = pendingScores.drain()
+        var failed: [String: Int] = [:]
+        for (leaderboardID, score) in snapshot {
+            do {
+                try await GKLeaderboard.submitScore(
+                    score,
+                    context: 0,
+                    player: GKLocalPlayer.local,
+                    leaderboardIDs: [leaderboardID]
+                )
+                logger.info("Submitted \(score) to \(leaderboardID)")
+            } catch {
+                failed[leaderboardID] = score
+                logger.error("Submit \(score) to \(leaderboardID) failed: \(error.localizedDescription)")
+            }
         }
-        do {
-            try await GKLeaderboard.submitScore(
-                score,
-                context: 0,
-                player: GKLocalPlayer.local,
-                leaderboardIDs: [leaderboardID]
-            )
-            logger.info("Submitted \(score) to \(leaderboardID)")
-        } catch {
-            logger.error("Submit \(score) to \(leaderboardID) failed: \(error.localizedDescription)")
+        if !failed.isEmpty {
+            pendingScores.reenqueue(failed)
         }
     }
 }

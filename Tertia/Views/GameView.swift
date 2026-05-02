@@ -18,6 +18,7 @@ struct GameView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(HighScoreStore.self) private var highScoreStore
     @Environment(DailyStore.self) private var dailyStore
+    @Environment(GameSessionStore.self) private var sessionStore
     @Environment(FeedbackService.self) private var feedback
     @Environment(GameCenterService.self) private var gameCenter
 
@@ -174,10 +175,12 @@ struct GameView: View {
             }
             .onChange(of: game.isGameOver) { _, isOver in
                 guard isOver, !mode.usesTimer else { return }
+                game.markGameEnded()
                 if mode == .daily,
                    Calendar.current.isDateInToday(puzzleDate) {
                     dailyStore.recordCompletion(score: game.score)
                 }
+                recordSessionIfTrackable()
                 showGameOver = true
             }
             .onChange(of: game.score) { oldValue, newValue in
@@ -428,7 +431,7 @@ struct GameView: View {
     private var toolbarContent: some ToolbarContent {
         ToolbarItem(placement: .topBarLeading) {
             Button("Modes", systemImage: "chevron.backward") {
-                if game.score > 0 {
+                if game.score > 0 && !game.isGameOver {
                     showExitConfirm = true
                 } else {
                     exitGame()
@@ -438,7 +441,7 @@ struct GameView: View {
         ToolbarItemGroup(placement: .topBarTrailing) {
             if mode != .daily {
                 Button("New Game", systemImage: "arrow.clockwise") {
-                    if game.score > 0 {
+                    if game.score > 0 && !game.isGameOver {
                         showNewGameConfirm = true
                     } else {
                         startNewGame()
@@ -474,12 +477,15 @@ struct GameView: View {
                 fastestSetSeconds: game.fastestSetSeconds,
                 longestStreak: game.longestStreak >= 2 ? game.longestStreak : nil,
                 strandedCardCount: strandedCardCount,
+                totalTriosFound: game.totalSetsFound,
+                gameDurationSeconds: game.gameDurationSeconds,
+                averageTimeBetweenSetsSeconds: game.averageTimeBetweenSetsSeconds,
                 onChangeMode: {
                     showGameOver = false
                     onExit()
                 }
             )
-            .presentationDetents([.medium])
+            .presentationDetents([.medium, .large])
         } else {
             GameOverSheet(
                 mode: mode,
@@ -489,6 +495,9 @@ struct GameView: View {
                 fastestSetSeconds: game.fastestSetSeconds,
                 longestStreak: game.longestStreak >= 2 ? game.longestStreak : nil,
                 strandedCardCount: strandedCardCount,
+                totalTriosFound: game.totalSetsFound,
+                gameDurationSeconds: game.gameDurationSeconds,
+                averageTimeBetweenSetsSeconds: game.averageTimeBetweenSetsSeconds,
                 onPlayAgain: {
                     showGameOver = false
                     startNewGame()
@@ -498,7 +507,7 @@ struct GameView: View {
                     onExit()
                 }
             )
-            .presentationDetents([.medium])
+            .presentationDetents([.medium, .large])
         }
     }
 
@@ -646,6 +655,7 @@ struct GameView: View {
         guard let controller else { return }
         guard !hasHandledExpiry else { return }
         hasHandledExpiry = true
+        game.markGameEnded()
         let finalScore = game.score
         let duration = Int(controller.totalDuration)
 
@@ -665,12 +675,29 @@ struct GameView: View {
             break
         }
 
+        recordSessionIfTrackable()
+
         if mode == .timeAttack && wasNewBest {
             feedback.personalBest()
         } else {
             feedback.timerExpired()
         }
         showGameOver = true
+    }
+
+    /// Persists a `GameSessionRecord` for modes whose duration is meaningful
+    /// (i.e. not capped by a timer). Skips Time Attack — its 5-minute cap
+    /// would flatten the chart and drown out other modes.
+    private func recordSessionIfTrackable() {
+        guard !mode.usesTimer else { return }
+        guard let duration = game.gameDurationSeconds, duration > 0 else { return }
+        guard game.totalSetsFound > 0 else { return }
+        sessionStore.record(GameSessionRecord(
+            mode: mode,
+            durationSeconds: duration,
+            trioCount: game.totalSetsFound,
+            date: .now
+        ))
     }
 
     private func runTimerWatcher() async {
@@ -729,6 +756,7 @@ struct GameView: View {
     GameView(mode: .daily, onExit: {})
         .environment(HighScoreStore())
         .environment(DailyStore())
+        .environment(GameSessionStore())
         .environment(FeedbackService())
         .environment(GameCenterService())
 }

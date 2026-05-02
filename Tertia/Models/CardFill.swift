@@ -7,7 +7,7 @@
 
 import Foundation
 
-nonisolated enum CardFill: CaseIterable {
+nonisolated enum CardFill: String, CaseIterable, Codable {
     case empty, rightHalf, filled
 
     var displayName: String {
