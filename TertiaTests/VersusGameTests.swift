@@ -60,6 +60,19 @@ struct VersusGameTests {
         try await Task.sleep(for: .milliseconds(Int(ms)))
     }
 
+    /// Standard "both peers are ready to play" setup used by every gameplay
+    /// test. Starts both VersusGames, has both accept the pre-game match
+    /// confirmation popup, and ticks long enough for the deck seed to
+    /// propagate.
+    private func startAndAcceptMatch(_ pair: Pair) async throws {
+        await pair.hostGame.start()
+        await pair.guestGame.start()
+        try await tick()
+        await pair.hostGame.acceptMatch()
+        await pair.guestGame.acceptMatch()
+        try await tick()
+    }
+
     @Test("Host election matches transport-level decision")
     func hostElection() async {
         let pair = makePair()
@@ -67,12 +80,88 @@ struct VersusGameTests {
         #expect(!pair.guestGame.isHost)
     }
 
-    @Test("Host's deck seed propagates and both peers build the same board")
-    func deckSyncOnStart() async throws {
+    // MARK: - Pre-game confirmation
+
+    @Test("Fresh game starts in awaitingConfirmation with both decisions pending")
+    func freshGameStartsAwaitingConfirmation() async throws {
         let pair = makePair()
         await pair.hostGame.start()
         await pair.guestGame.start()
         try await tick()
+
+        #expect(pair.hostGame.phase == .awaitingConfirmation)
+        #expect(pair.guestGame.phase == .awaitingConfirmation)
+        #expect(pair.hostGame.localConfirmation == .pending)
+        #expect(pair.guestGame.localConfirmation == .pending)
+        // Critical: the host must NOT have seeded the deck yet — that's the
+        // whole point of deferring until both peers accept.
+        #expect(!pair.hostGame.hasReceivedDeck)
+        #expect(!pair.guestGame.hasReceivedDeck)
+    }
+
+    @Test("Both peers accepting moves phase to playing and seeds the deck")
+    func bothAcceptingStartsPlaying() async throws {
+        let pair = makePair()
+        await pair.hostGame.start()
+        await pair.guestGame.start()
+        try await tick()
+
+        await pair.hostGame.acceptMatch()
+        await pair.guestGame.acceptMatch()
+        try await tick()
+
+        #expect(pair.hostGame.phase == .playing)
+        #expect(pair.guestGame.phase == .playing)
+        #expect(pair.hostGame.localConfirmation == .accepted)
+        #expect(pair.hostGame.remoteConfirmation == .accepted)
+        #expect(pair.hostGame.hasReceivedDeck)
+        #expect(pair.guestGame.hasReceivedDeck)
+    }
+
+    @Test("Local declining ends the match with no outcome and no recorded deck")
+    func localDeclineAbandonsMatch() async throws {
+        let pair = makePair()
+        await pair.hostGame.start()
+        await pair.guestGame.start()
+        try await tick()
+
+        await pair.hostGame.declineMatch()
+        try await tick()
+
+        #expect(pair.hostGame.phase == .ended)
+        #expect(pair.hostGame.outcome == nil)
+        #expect(pair.hostGame.localConfirmation == .declined)
+        // Guest should mirror via the broadcast confirmation message.
+        #expect(pair.guestGame.phase == .ended)
+        #expect(pair.guestGame.outcome == nil)
+        #expect(pair.guestGame.remoteConfirmation == .declined)
+        // No deck should have been seeded on either side.
+        #expect(!pair.hostGame.hasReceivedDeck)
+        #expect(!pair.guestGame.hasReceivedDeck)
+    }
+
+    @Test("Remote declining flips local phase to ended without an outcome")
+    func remoteDeclineAbandonsMatch() async throws {
+        let pair = makePair()
+        await pair.hostGame.start()
+        await pair.guestGame.start()
+        try await tick()
+
+        // Host accepts, guest declines.
+        await pair.hostGame.acceptMatch()
+        await pair.guestGame.declineMatch()
+        try await tick()
+
+        #expect(pair.hostGame.phase == .ended)
+        #expect(pair.hostGame.outcome == nil)
+        #expect(pair.hostGame.remoteConfirmation == .declined)
+        #expect(!pair.hostGame.hasReceivedDeck)
+    }
+
+    @Test("Host's deck seed propagates and both peers build the same board")
+    func deckSyncOnStart() async throws {
+        let pair = makePair()
+        try await startAndAcceptMatch(pair)
 
         #expect(pair.hostGame.hasReceivedDeck)
         #expect(pair.guestGame.hasReceivedDeck)
@@ -87,9 +176,7 @@ struct VersusGameTests {
     @Test("Host claiming a valid trio updates host's score on both peers")
     func hostClaimUpdatesBothScores() async throws {
         let pair = makePair()
-        await pair.hostGame.start()
-        await pair.guestGame.start()
-        try await tick()
+        try await startAndAcceptMatch(pair)
 
         // Plant a known valid trio at the start of the host's board, then
         // mirror the same wire-card identities on the guest. Direct mutation
@@ -124,9 +211,7 @@ struct VersusGameTests {
     @Test("Guest claim is arbitrated by host and credited to guest on both peers")
     func guestClaimRoundTrip() async throws {
         let pair = makePair()
-        await pair.hostGame.start()
-        await pair.guestGame.start()
-        try await tick()
+        try await startAndAcceptMatch(pair)
 
         let trio = [
             SetCard(shape: .circle, count: .one, color: .red, fill: .filled),
@@ -152,9 +237,7 @@ struct VersusGameTests {
     @Test("Invalid claim from guest triggers a lockout on the guest only")
     func invalidGuestClaimLocksOutGuest() async throws {
         let pair = makePair()
-        await pair.hostGame.start()
-        await pair.guestGame.start()
-        try await tick()
+        try await startAndAcceptMatch(pair)
 
         // Plant three identical cards (not a valid trio — fill differs only
         // would be valid, but identical cards are NOT a set under explain).
@@ -186,9 +269,7 @@ struct VersusGameTests {
     @Test("Forfeit from local ends the match locally and signals opponent's win")
     func forfeitEndsMatch() async throws {
         let pair = makePair()
-        await pair.hostGame.start()
-        await pair.guestGame.start()
-        try await tick()
+        try await startAndAcceptMatch(pair)
 
         await pair.guestGame.forfeit()
         try await tick()
@@ -202,9 +283,7 @@ struct VersusGameTests {
     @Test("Both peers tapping Rematch resets state for a fresh game")
     func bothRematchTriggersFreshGame() async throws {
         let pair = makePair()
-        await pair.hostGame.start()
-        await pair.guestGame.start()
-        try await tick()
+        try await startAndAcceptMatch(pair)
 
         // End the match by guest forfeiting → host has outcome=.win, guest=.forfeit.
         await pair.guestGame.forfeit()
@@ -236,9 +315,7 @@ struct VersusGameTests {
     @Test("Decline from opponent flips local rematch state to opponentDeclined")
     func declineSurfacesImmediately() async throws {
         let pair = makePair()
-        await pair.hostGame.start()
-        await pair.guestGame.start()
-        try await tick()
+        try await startAndAcceptMatch(pair)
 
         await pair.guestGame.forfeit()
         try await tick()
@@ -294,9 +371,7 @@ struct VersusGameTests {
     @Test("Successful opponent claim sets the opponentClaimEffect, then auto-clears")
     func opponentClaimEffectLifecycle() async throws {
         let pair = makePair()
-        await pair.hostGame.start()
-        await pair.guestGame.start()
-        try await tick()
+        try await startAndAcceptMatch(pair)
 
         let trio = [
             SetCard(shape: .circle, count: .one, color: .red, fill: .filled),
@@ -330,6 +405,10 @@ struct VersusGameTests {
         await hostGame.start()
         await guestGame.start()
         try await tick()
+        // Both peers must accept the match before the deck is seeded.
+        await hostGame.acceptMatch()
+        await guestGame.acceptMatch()
+        try await tick()
 
         for (i, card) in trio.enumerated() {
             hostGame.setGame.boardSlots[i] = card
@@ -353,9 +432,7 @@ struct VersusGameTests {
     @Test("Opponent transport disconnect surfaces as a win with .opponentDisconnected source")
     func opponentDisconnectFlagsWinSource() async throws {
         let pair = makePair()
-        await pair.hostGame.start()
-        await pair.guestGame.start()
-        try await tick()
+        try await startAndAcceptMatch(pair)
 
         // Guest's transport reports the host disconnected. Host is "remote"
         // from guest's perspective.
@@ -369,9 +446,7 @@ struct VersusGameTests {
     @Test("Opponent forfeit surfaces as a win with .opponentForfeited source")
     func opponentForfeitFlagsWinSource() async throws {
         let pair = makePair()
-        await pair.hostGame.start()
-        await pair.guestGame.start()
-        try await tick()
+        try await startAndAcceptMatch(pair)
 
         await pair.guestGame.forfeit()
         try await tick()
@@ -385,9 +460,7 @@ struct VersusGameTests {
     @Test("Transport failure resolves to a draw")
     func transportFailureIsDraw() async throws {
         let pair = makePair()
-        await pair.hostGame.start()
-        await pair.guestGame.start()
-        try await tick()
+        try await startAndAcceptMatch(pair)
 
         pair.guestTransport.emitEvent(.failed(reason: "test induced"))
         try await tick()
@@ -398,9 +471,7 @@ struct VersusGameTests {
     @Test("Late claim message after game-over is dropped, not processed")
     func lateClaimAfterOutcomeIsDropped() async throws {
         let pair = makePair()
-        await pair.hostGame.start()
-        await pair.guestGame.start()
-        try await tick()
+        try await startAndAcceptMatch(pair)
 
         // Force a game-over via forfeit.
         await pair.guestGame.forfeit()
@@ -428,9 +499,7 @@ struct VersusGameTests {
     @Test("Duplicate claims with the same claimID are arbitrated only once")
     func duplicateClaimIdempotent() async throws {
         let pair = makePair()
-        await pair.hostGame.start()
-        await pair.guestGame.start()
-        try await tick()
+        try await startAndAcceptMatch(pair)
 
         let trio = [
             SetCard(shape: .circle, count: .one, color: .red, fill: .filled),

@@ -86,6 +86,13 @@ enum VersusMessage: Codable, Equatable, Sendable {
     /// their local board even if state has drifted.
     case dealThreeAck(newCards: [WireCard])
 
+    /// Either peer → both: pre-game confirmation handshake. Both peers send
+    /// this with `accepted: true` to start the match; either sending
+    /// `accepted: false` aborts before any deck is seeded. Lets players
+    /// double-confirm after GameKit's matchmaker hands them an opponent —
+    /// the popup is the "last chance to back out" before the game starts.
+    case matchConfirmation(by: VersusPlayerID, accepted: Bool)
+
     /// Either peer → both: this player has forfeited. Recipient ends the
     /// match and records a forfeit in their VersusStore.
     case forfeit(by: VersusPlayerID)

@@ -84,6 +84,14 @@ struct VersusMessageTests {
         #expect(try roundTrip(original) == original)
     }
 
+    @Test("matchConfirmation round-trips both accept and decline")
+    func matchConfirmationRoundTrips() throws {
+        let accept: VersusMessage = .matchConfirmation(by: "PLAYER-A", accepted: true)
+        let decline: VersusMessage = .matchConfirmation(by: "PLAYER-B", accepted: false)
+        #expect(try roundTrip(accept) == accept)
+        #expect(try roundTrip(decline) == decline)
+    }
+
     @Test("rematchRequest and rematchDecline round-trip")
     func rematchMessagesRoundTrip() throws {
         let req: VersusMessage = .rematchRequest(by: "PLAYER-A")

@@ -48,6 +48,24 @@ enum VersusWinSource: Equatable, Sendable {
     case opponentDisconnected
 }
 
+/// Lifecycle phases for a versus session. The pre-game `awaitingConfirmation`
+/// stage gives both peers a chance to back out after GameKit hands them an
+/// opponent — the deck isn't seeded until both confirm. `ended` covers both
+/// gameplay completion (with `outcome` set) and pre-game abandonment
+/// (`outcome == nil`).
+enum VersusGamePhase: Equatable, Sendable {
+    case awaitingConfirmation
+    case playing
+    case ended
+}
+
+/// Per-peer confirmation state during the pre-game handshake.
+enum MatchConfirmationDecision: Equatable, Sendable {
+    case pending
+    case accepted
+    case declined
+}
+
 @MainActor
 @Observable
 final class VersusGame: Identifiable {
@@ -60,6 +78,7 @@ final class VersusGame: Identifiable {
     private let clock: @MainActor () -> Date
     private let opponentClaimEffectDuration: TimeInterval
     private let rematchTimeoutDuration: TimeInterval
+    private let confirmationTimeoutDuration: TimeInterval
 
     // MARK: - Identity
 
@@ -92,6 +111,14 @@ final class VersusGame: Identifiable {
     private(set) var winSource: VersusWinSource?
 
     private(set) var hasReceivedDeck: Bool = false
+
+    /// Lifecycle phase. `awaitingConfirmation` is the pre-game popup,
+    /// `playing` is active gameplay, `ended` is terminal (either with an
+    /// outcome from gameplay or with `outcome == nil` if the match was
+    /// abandoned at confirmation).
+    private(set) var phase: VersusGamePhase = .awaitingConfirmation
+    private(set) var localConfirmation: MatchConfirmationDecision = .pending
+    private(set) var remoteConfirmation: MatchConfirmationDecision = .pending
 
     // MARK: - Local-only state
 
@@ -157,6 +184,7 @@ final class VersusGame: Identifiable {
         lockoutDuration: TimeInterval = 1.5,
         opponentClaimEffectDuration: TimeInterval = 1.5,
         rematchTimeoutDuration: TimeInterval = 15,
+        confirmationTimeoutDuration: TimeInterval = 15,
         clock: @escaping @MainActor () -> Date = { .now }
     ) {
         self.session = session
@@ -165,6 +193,7 @@ final class VersusGame: Identifiable {
         self.lockoutDuration = lockoutDuration
         self.opponentClaimEffectDuration = opponentClaimEffectDuration
         self.rematchTimeoutDuration = rematchTimeoutDuration
+        self.confirmationTimeoutDuration = confirmationTimeoutDuration
         self.clock = clock
         self.isHost = session.isHost
         self.localPlayerID = session.localPlayerID
@@ -176,8 +205,9 @@ final class VersusGame: Identifiable {
 
     // MARK: - Lifecycle
 
-    /// Kicks off the message pump and, if host, broadcasts the deck seed.
-    /// Idempotent — calling more than once is a no-op.
+    /// Kicks off the message pump and the confirmation timeout. Does NOT
+    /// broadcast the deck seed yet — that's deferred until both peers have
+    /// accepted the match (see `evaluateConfirmationProgress`). Idempotent.
     func start() async {
         guard pumpTask == nil else { return }
         pumpTask = Task { @MainActor [weak self] in
@@ -186,13 +216,7 @@ final class VersusGame: Identifiable {
         stateObserverTask = Task { @MainActor [weak self] in
             await self?.observeSessionState()
         }
-
-        if isHost {
-            let seed = generateSeed()
-            hostSeed = seed
-            buildDeck(from: seed)
-            await session.send(.deckSeed(seed))
-        }
+        scheduleConfirmationTimeout()
     }
 
     /// Shuts down the message pump. Idempotent.
@@ -247,6 +271,76 @@ final class VersusGame: Identifiable {
         guard outcome == nil else { return }
         await session.send(.forfeit(by: localPlayerID))
         finish(outcome: .forfeit)
+    }
+
+    // MARK: - Pre-game confirmation
+
+    /// Local player taps Accept on the pre-game confirmation popup. Broadcasts
+    /// the decision; if both peers have accepted, transitions to `.playing`
+    /// and (host only) seeds the deck.
+    func acceptMatch() async {
+        guard phase == .awaitingConfirmation else { return }
+        guard localConfirmation == .pending else { return }
+        localConfirmation = .accepted
+        await session.send(.matchConfirmation(by: localPlayerID, accepted: true))
+        evaluateConfirmationProgress()
+    }
+
+    /// Local player taps Deny. Broadcasts the decision and ends the session
+    /// without recording an outcome — declined matches don't appear in stats.
+    func declineMatch() async {
+        guard phase == .awaitingConfirmation else { return }
+        guard localConfirmation == .pending else { return }
+        localConfirmation = .declined
+        await session.send(.matchConfirmation(by: localPlayerID, accepted: false))
+        abandonMatch()
+    }
+
+    /// Either both peers have accepted (→ start playing) or one declined /
+    /// timed out (→ end the session). Idempotent on repeat calls.
+    private func evaluateConfirmationProgress() {
+        guard phase == .awaitingConfirmation else { return }
+        if localConfirmation == .declined || remoteConfirmation == .declined {
+            abandonMatch()
+            return
+        }
+        guard localConfirmation == .accepted, remoteConfirmation == .accepted else {
+            return
+        }
+        phase = .playing
+        if isHost {
+            let seed = generateSeed()
+            hostSeed = seed
+            buildDeck(from: seed)
+            Task { [session] in await session.send(.deckSeed(seed)) }
+        }
+    }
+
+    /// Tears down a match that was abandoned before any gameplay. Phase goes
+    /// to `.ended` with `outcome == nil` — the view layer reads that as
+    /// "dismiss without recording."
+    private func abandonMatch() {
+        guard phase != .ended else { return }
+        phase = .ended
+        // Don't immediately leave the session — the parent view inspects
+        // the terminal state and calls leave() during dismissal.
+    }
+
+    private func scheduleConfirmationTimeout() {
+        let duration = confirmationTimeoutDuration
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(duration))
+            guard let self else { return }
+            // Timeout only counts if the local user never decided. If they
+            // already accepted and we're waiting on the remote, we still
+            // call it a timeout — match is over.
+            if self.phase == .awaitingConfirmation {
+                if self.localConfirmation == .pending {
+                    self.localConfirmation = .declined
+                }
+                self.abandonMatch()
+            }
+        }
     }
 
     // MARK: - Rematch
@@ -313,6 +407,12 @@ final class VersusGame: Identifiable {
         outcome = nil
         winSource = nil
         rematchState = .idle
+        // Rematch already required both peers to agree, so we skip a fresh
+        // confirmation handshake. Phase goes directly back to .playing and
+        // confirmations are auto-set to accepted to keep state consistent.
+        phase = .playing
+        localConfirmation = .accepted
+        remoteConfirmation = .accepted
         hostScore = 0
         guestScore = 0
         hostTrios = 0
@@ -601,6 +701,7 @@ final class VersusGame: Identifiable {
             // source — natural deck-clear endings flow through here.
             self.winSource = winSource ?? .scoreFinal
         }
+        phase = .ended
         // Don't tear down the session immediately — the view layer wants to
         // present the game-over sheet first. Caller leaves explicitly.
     }
@@ -623,6 +724,19 @@ final class VersusGame: Identifiable {
                 break // valid post-game; fall through
             default:
                 logger.info("Dropping post-outcome message: \(String(describing: message))")
+                return
+            }
+        }
+
+        // Pre-game (awaitingConfirmation): only confirmation, forfeit, and
+        // heartbeat are legal. Defensive guard against a peer that sends
+        // gameplay messages before both have accepted.
+        if phase == .awaitingConfirmation {
+            switch message {
+            case .matchConfirmation, .forfeit, .heartbeat:
+                break // valid pre-game; fall through
+            default:
+                logger.info("Dropping pre-confirmation message: \(String(describing: message))")
                 return
             }
         }
@@ -686,6 +800,11 @@ final class VersusGame: Identifiable {
 
         case .rematchDecline:
             handleRematchDecline()
+
+        case .matchConfirmation(_, let accepted):
+            guard phase == .awaitingConfirmation else { return }
+            remoteConfirmation = accepted ? .accepted : .declined
+            evaluateConfirmationProgress()
 
         case .heartbeat:
             // MatchSession filters these out; defensive no-op.

@@ -54,7 +54,17 @@ struct VersusGameView: View {
                     columnCount: columnCount
                 )
                 .overlay {
-                    if shouldShowDealThreeOverlay {
+                    if game.phase == .awaitingConfirmation {
+                        MatchConfirmationView(
+                            opponentName: game.remoteDisplayName,
+                            localDecision: game.localConfirmation,
+                            remoteDecision: game.remoteConfirmation,
+                            onAccept: { Task { await game.acceptMatch() } },
+                            onDecline: { Task { await game.declineMatch() } }
+                        )
+                        .padding(.horizontal, 24)
+                        .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                    } else if shouldShowDealThreeOverlay {
                         VersusDealThreeOverlay {
                             Task { await game.requestDealThree() }
                         }
@@ -67,6 +77,7 @@ struct VersusGameView: View {
             .opacity(showGameOver ? 0.5 : 1.0)
             .blur(radius: showGameOver ? 2 : 0)
             .animation(.default, value: showGameOver)
+            .animation(.spring(response: 0.35, dampingFraction: 0.85), value: game.phase)
             .tint(GameMode.versus.accentColor)
             .toolbar { toolbarContent }
             .overlay(alignment: .bottom) {
@@ -110,12 +121,26 @@ struct VersusGameView: View {
                     recordCompletedMatch(outcome: outcome)
                 }
             }
+            .onChange(of: game.phase) { _, newPhase in
+                // Match abandoned at the confirmation popup ends with phase
+                // .ended but no outcome — nothing to record, just bail back
+                // to mode select.
+                guard newPhase == .ended, game.outcome == nil else { return }
+                game.leave()
+                onExit()
+            }
             .onChange(of: scenePhase) { _, phase in
                 // Per VERSUS_PLAN.md: backgrounding is treated as a forfeit.
                 // Only fire if the match is still live — outcome already set
-                // means we're about to dismiss anyway.
+                // means we're about to dismiss anyway. During the pre-game
+                // popup we treat it as a decline instead, so backgrounding
+                // before committing doesn't get recorded as a forfeit.
                 guard phase == .background, game.outcome == nil else { return }
-                Task { await game.forfeit() }
+                if game.phase == .awaitingConfirmation {
+                    Task { await game.declineMatch() }
+                } else {
+                    Task { await game.forfeit() }
+                }
             }
             .sheet(isPresented: $showGameOver) {
                 VersusGameOverSheet(
@@ -168,11 +193,15 @@ struct VersusGameView: View {
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         ToolbarItem(placement: .topBarLeading) {
-            Button("Forfeit", systemImage: "flag.fill") {
-                showForfeitConfirm = true
+            // Hide during pre-game confirmation — the popup's Decline button
+            // owns the "back out" semantic in that state.
+            if game.phase != .awaitingConfirmation {
+                Button("Forfeit", systemImage: "flag.fill") {
+                    showForfeitConfirm = true
+                }
+                .tint(.red)
+                .disabled(game.outcome != nil)
             }
-            .tint(.red)
-            .disabled(game.outcome != nil)
         }
     }
 }
