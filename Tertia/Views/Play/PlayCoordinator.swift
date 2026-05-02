@@ -84,8 +84,15 @@ struct PlayCoordinator: View {
     }
 
     /// Bridge a freshly-found GKMatch into the model layer. Builds the
-    /// transport → session → game stack and replaces the matchmaker on the
-    /// same cover with the active game.
+    /// transport → session → game stack, then transitions the cover from
+    /// matchmaker to game.
+    ///
+    /// Two-step transition (clear flow, brief sleep, set to .game) avoids a
+    /// race where SwiftUI is still tearing down the matchmaker view
+    /// controller while we ask it to show the game. Going directly from
+    /// `.matchmaker` to `.game` worked for Quick Match but broke the
+    /// post-accept flow for Invite Friend, presumably because GameKit's
+    /// invite-only state machine takes longer to clean up.
     private func handleMatchFound(_ match: GKMatch) {
         let transport = GKMatchTransport(match: match)
         let session = MatchSession(transport: transport)
@@ -98,7 +105,12 @@ struct PlayCoordinator: View {
             localDisplayName: local.displayName,
             remoteDisplayName: remote?.displayName ?? "Opponent"
         )
-        versusFlow = .game(game)
+
+        versusFlow = nil
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(450))
+            versusFlow = .game(game)
+        }
     }
 
     private func handleMatchmakingError(_ error: Error) {

@@ -100,7 +100,16 @@ struct VersusMatchmakerView: UIViewControllerRepresentable {
         }
 
         func matchmakerViewController(_ viewController: GKMatchmakerViewController, didFind match: GKMatch) {
-            onMatch(match)
+            // Apple's expected pattern: dismiss the matchmaker view controller
+            // and *then* operate on the GKMatch. Skipping the explicit dismiss
+            // — relying on SwiftUI to tear down the cover when we change the
+            // binding — was leaving GKMatchmakerViewController in a half-torn-
+            // down state for invite-only flows, which presented as a broken
+            // post-accept transition.
+            logger.info("Matchmaker found match; dismissing then handing off")
+            viewController.dismiss(animated: true) { [weak self] in
+                self?.onMatch(match)
+            }
         }
     }
 }

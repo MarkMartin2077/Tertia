@@ -135,7 +135,10 @@ private struct PlayerStatColumn: View {
                     StatLine(
                         icon: "bolt.fill",
                         color: .yellow,
-                        label: fastestSetText(seconds)
+                        // String literal so it coerces to LocalizedStringKey
+                        // — passing a String variable to a LocalizedStringKey
+                        // parameter doesn't compile.
+                        label: "\(seconds.formatted(.number.precision(.fractionLength(1))))s fastest"
                     )
                 }
             }
@@ -150,10 +153,6 @@ private struct PlayerStatColumn: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilitySummary)
-    }
-
-    private func fastestSetText(_ seconds: Double) -> String {
-        seconds.formatted(.number.precision(.fractionLength(1))) + "s fastest"
     }
 
     private var accessibilitySummary: String {
@@ -172,7 +171,11 @@ private struct PlayerStatColumn: View {
 private struct StatLine: View {
     let icon: String
     let color: Color
-    let label: String
+    /// `LocalizedStringKey` so `Text(label)` runs the value through the
+    /// localization machinery — required for `^[…](inflect: true)` markdown
+    /// to actually pluralize. A `String` parameter would resolve to the
+    /// `Text(_ verbatim:)` overload and render the markdown literally.
+    let label: LocalizedStringKey
 
     var body: some View {
         HStack(spacing: 6) {
