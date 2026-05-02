@@ -11,28 +11,33 @@ import GameKit
 struct PlayCoordinator: View {
     @AppStorage("lastGameMode") private var lastGameModeRaw: String = GameMode.normal.rawValue
     @Binding var requestedMode: GameMode?
+    @Binding var requestedInvite: PendingMatchInvite?
     @State private var activeMode: GameMode?
     @State private var versusFlow: VersusFlow?
     @State private var matchmakingError: String?
 
-    init(requestedMode: Binding<GameMode?> = .constant(nil)) {
+    init(
+        requestedMode: Binding<GameMode?> = .constant(nil),
+        requestedInvite: Binding<PendingMatchInvite?> = .constant(nil)
+    ) {
         self._requestedMode = requestedMode
+        self._requestedInvite = requestedInvite
     }
 
     var body: some View {
         ModeSelectView(
             lastPlayed: GameMode(rawValue: lastGameModeRaw),
             onSelect: { mode in startMode(mode) },
-            onVersus: { intent in versusFlow = .matchmaker(intent) }
+            onVersus: { intent in versusFlow = .matchmaker(.intent(intent)) }
         )
         .fullScreenCover(item: $activeMode) { mode in
             GameView(mode: mode, onExit: { activeMode = nil })
         }
         .fullScreenCover(item: $versusFlow) { flow in
             switch flow {
-            case .matchmaker(let intent):
+            case .matchmaker(let source):
                 VersusMatchmakerView(
-                    intent: intent,
+                    source: source,
                     onMatch: { match in handleMatchFound(match) },
                     onCancel: { versusFlow = nil },
                     onError: { error in handleMatchmakingError(error) }
@@ -46,7 +51,7 @@ struct PlayCoordinator: View {
                         // Replace the current game with a fresh matchmaker
                         // pass on the same cover — single fullScreenCover
                         // handles the handoff without dismiss/present races.
-                        versusFlow = .matchmaker(.quickMatch)
+                        versusFlow = .matchmaker(.intent(.quickMatch))
                     }
                 )
             }
@@ -69,12 +74,30 @@ struct PlayCoordinator: View {
                 requestedMode = nil
             }
         }
+        .onChange(of: requestedInvite) { _, newValue in
+            if let invite = newValue {
+                acceptInvite(invite)
+                requestedInvite = nil
+            }
+        }
         .onAppear {
             if let mode = requestedMode {
                 startMode(mode)
                 requestedMode = nil
             }
+            if let invite = requestedInvite {
+                acceptInvite(invite)
+                requestedInvite = nil
+            }
         }
+    }
+
+    /// Tears down whatever versus state is on screen and presents the
+    /// invite-driven matchmaker. Called when the user accepts a GameKit
+    /// invite from Messages — by that point any prior game/match cover is
+    /// stale.
+    private func acceptInvite(_ pending: PendingMatchInvite) {
+        versusFlow = .matchmaker(.acceptedInvite(pending.invite))
     }
 
     private func startMode(_ mode: GameMode) {
@@ -124,13 +147,18 @@ struct PlayCoordinator: View {
 /// place — no dismiss/present race when transitioning from "match found"
 /// to gameplay or from "find a new match" back to matchmaker.
 private enum VersusFlow: Identifiable {
-    case matchmaker(VersusMatchIntent)
+    case matchmaker(VersusMatchmakerSource)
     case game(VersusGame)
 
     var id: String {
         switch self {
-        case .matchmaker(let intent): return "matchmaker-\(intent.rawValue)"
-        case .game(let game): return "game-\(game.id.uuidString)"
+        case .matchmaker(let source):
+            switch source {
+            case .intent(let intent): return "matchmaker-intent-\(intent.rawValue)"
+            case .acceptedInvite(let invite): return "matchmaker-invite-\(ObjectIdentifier(invite))"
+            }
+        case .game(let game):
+            return "game-\(game.id.uuidString)"
         }
     }
 }

@@ -30,11 +30,26 @@ struct VersusGameView: View {
 
     @Environment(FeedbackService.self) private var feedback
     @Environment(VersusStore.self) private var versusStore
+    @Environment(VersusBestsStore.self) private var versusBestsStore
+    @Environment(GameCenterService.self) private var gameCenter
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var showForfeitConfirm = false
     @State private var showGameOver = false
+    /// Whether the captioned lockout bar has appeared yet this match. Used
+    /// to switch to the compact dial after the first explanation.
+    @State private var hasShownLockoutCaption = false
+    /// Pending background-grace timer. Set when scenePhase goes to
+    /// .background; cancelled if the user returns within the grace window
+    /// or fires `game.forfeit()` if they don't. Phone calls, notification
+    /// taps, and accidental swipes all benefit from this delay.
+    @State private var backgroundForfeitTask: Task<Void, Never>?
+
+    /// How long the user can be backgrounded before we record a forfeit.
+    /// Mirrors `MatchSession.disconnectGrace` so the local-side grace and
+    /// the peer-side watchdog land at roughly the same moment.
+    private let backgroundForfeitGrace: Duration = .seconds(20)
 
     private let columnCount = 3
     private let cardSpacing: CGFloat = 6
@@ -76,15 +91,31 @@ struct VersusGameView: View {
             .boardBackground()
             .opacity(showGameOver ? 0.5 : 1.0)
             .blur(radius: showGameOver ? 2 : 0)
+            // Subtle desaturation while locked out — pairs with the captioned
+            // bar to make "you can't tap right now" unmistakable, without
+            // hiding the board outright (you may want to plan your next claim).
+            .saturation(game.isLockedOut ? 0.5 : 1.0)
+            .opacity(game.isLockedOut ? 0.85 : 1.0)
             .animation(.default, value: showGameOver)
             .animation(.spring(response: 0.35, dampingFraction: 0.85), value: game.phase)
+            .animation(.easeInOut(duration: 0.25), value: game.isLockedOut)
             .tint(GameMode.versus.accentColor)
             .toolbar { toolbarContent }
             .overlay(alignment: .bottom) {
                 if let endsAt = game.lockoutEndsAt, game.isLockedOut {
-                    LockoutProgressBar(endsAt: endsAt, totalDuration: 1.5)
-                        .padding(.bottom, 24)
-                        .transition(.opacity)
+                    LockoutProgressBar(
+                        endsAt: endsAt,
+                        totalDuration: 1.5,
+                        showsCaption: !hasShownLockoutCaption
+                    )
+                    .padding(.bottom, 24)
+                    .transition(.opacity)
+                    .onAppear {
+                        // Show the explanation card the first time per match;
+                        // subsequent lockouts get the compact dial since the
+                        // player already understands what's happening.
+                        hasShownLockoutCaption = true
+                    }
                 }
             }
             .overlay {
@@ -130,17 +161,7 @@ struct VersusGameView: View {
                 onExit()
             }
             .onChange(of: scenePhase) { _, phase in
-                // Per VERSUS_PLAN.md: backgrounding is treated as a forfeit.
-                // Only fire if the match is still live — outcome already set
-                // means we're about to dismiss anyway. During the pre-game
-                // popup we treat it as a decline instead, so backgrounding
-                // before committing doesn't get recorded as a forfeit.
-                guard phase == .background, game.outcome == nil else { return }
-                if game.phase == .awaitingConfirmation {
-                    Task { await game.declineMatch() }
-                } else {
-                    Task { await game.forfeit() }
-                }
+                handleScenePhaseChange(phase)
             }
             .sheet(isPresented: $showGameOver) {
                 VersusGameOverSheet(
@@ -162,6 +183,16 @@ struct VersusGameView: View {
             .task {
                 await game.start()
             }
+            .onAppear {
+                // Keep the screen on for the duration of the match. iOS's
+                // aggressive Wi-Fi power save during screen dim/sleep was
+                // causing GameKit's UDP traffic to drop, manifesting as
+                // mid-match disconnects when both players were on Wi-Fi.
+                UIApplication.shared.isIdleTimerDisabled = true
+            }
+            .onDisappear {
+                UIApplication.shared.isIdleTimerDisabled = false
+            }
         }
     }
 
@@ -169,6 +200,11 @@ struct VersusGameView: View {
     /// once per outcome transition (nil → non-nil); rematch resets outcome
     /// back to nil before the next match's transition fires, so we naturally
     /// only record terminal results.
+    ///
+    /// Also folds the match into all-time `VersusBests` and submits the
+    /// relevant Game Center leaderboards. Both are fire-and-forget — a
+    /// failure to update bests or submit a score must never disrupt the
+    /// player's game-over flow.
     private func recordCompletedMatch(outcome: VersusOutcome) {
         let record = VersusMatchRecord(
             date: .now,
@@ -180,6 +216,72 @@ struct VersusGameView: View {
             outcome: outcome
         )
         versusStore.record(record)
+        versusBestsStore.record(
+            outcome: outcome,
+            localFastestSetSeconds: game.localFastestSetSeconds,
+            localLongestStreak: game.localLongestStreak
+        )
+        submitLeaderboards(for: outcome)
+    }
+
+    /// Handles all scenePhase transitions for an active versus match.
+    /// Backgrounding during gameplay no longer records an immediate forfeit
+    /// — phone calls, notification taps, and accidental swipes deserve a
+    /// grace window. If the user returns within `backgroundForfeitGrace`
+    /// the timer is cancelled. Pre-game confirmation backgrounding is still
+    /// an immediate decline (no skin in the game yet).
+    private func handleScenePhaseChange(_ phase: ScenePhase) {
+        guard game.outcome == nil else { return }
+
+        switch phase {
+        case .background:
+            if game.phase == .awaitingConfirmation {
+                // Pre-game has nothing to risk; declining immediately frees
+                // the opponent without making them wait the full grace.
+                Task { await game.declineMatch() }
+                return
+            }
+            backgroundForfeitTask?.cancel()
+            let grace = backgroundForfeitGrace
+            backgroundForfeitTask = Task { @MainActor in
+                try? await Task.sleep(for: grace)
+                guard !Task.isCancelled else { return }
+                guard game.outcome == nil else { return }
+                await game.forfeit()
+            }
+        case .active:
+            // User returned within the grace window — cancel the pending forfeit.
+            backgroundForfeitTask?.cancel()
+            backgroundForfeitTask = nil
+        case .inactive:
+            // Transient state (control center, notification banner). Don't
+            // start the grace clock for these; .background is the real signal.
+            break
+        @unknown default:
+            break
+        }
+    }
+
+    /// Pushes Versus stats to Game Center. App Store Connect must declare
+    /// the leaderboard IDs (see `LeaderboardID.versus*`) before submissions
+    /// take effect; until they do, GameKit logs an error and we silently
+    /// continue.
+    private func submitLeaderboards(for outcome: VersusOutcome) {
+        let bests = versusBestsStore.bests
+        Task {
+            // Wins ladder updates only when the local player actually won —
+            // submitting on every match would still be best-score-correct
+            // but spams GameKit unnecessarily.
+            if outcome == .win {
+                await gameCenter.submitVersusWins(versusStore.winCount)
+            }
+            if let fastest = bests.fastestSetSeconds {
+                await gameCenter.submitVersusFastestSet(seconds: fastest)
+            }
+            if bests.longestCombo > 0 {
+                await gameCenter.submitVersusLongestCombo(bests.longestCombo)
+            }
+        }
     }
 
     private var shouldShowDealThreeOverlay: Bool {
@@ -212,13 +314,13 @@ private struct VersusHeaderRow: View {
     let game: VersusGame
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 16) {
+        HStack(alignment: .top, spacing: 12) {
             VersusScoreChip(
                 name: game.localDisplayName,
                 score: game.localScore,
                 trios: game.localTrios,
                 multiplier: game.localMultiplier,
-                scoreTint: GameMode.versus.accentColor,
+                isLocal: true,
                 alignment: .leading
             )
             VersusScoreChip(
@@ -226,11 +328,11 @@ private struct VersusHeaderRow: View {
                 score: game.remoteScore,
                 trios: game.remoteTrios,
                 multiplier: game.remoteMultiplier,
-                scoreTint: .primary,
+                isLocal: false,
                 alignment: .trailing
             )
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal)
         .padding(.top, 8)
         .padding(.bottom, 16)
     }
@@ -241,23 +343,34 @@ private struct VersusScoreChip: View {
     let score: Int
     let trios: Int
     let multiplier: Int
-    /// Color applied to the score number — accent for the local player so
-    /// they can locate themselves at a glance, neutral for the opponent.
-    let scoreTint: Color
+    /// Drives the visual asymmetry that lets the player locate "me" in a
+    /// fast race at a glance — accent-tinted background pill, leading dot
+    /// indicator, accent score color. The remote chip is neutral material.
+    let isLocal: Bool
     let alignment: HorizontalAlignment
 
+    private var accent: Color { GameMode.versus.accentColor }
+
     var body: some View {
-        VStack(alignment: alignment, spacing: 2) {
-            Text(name)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .truncationMode(.tail)
+        VStack(alignment: alignment, spacing: 4) {
             HStack(spacing: 6) {
+                if isLocal {
+                    Circle()
+                        .fill(accent)
+                        .frame(width: 6, height: 6)
+                        .accessibilityHidden(true)
+                }
+                Text(name)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text("\(score)")
                     .font(.largeTitle.bold())
                     .monospacedDigit()
-                    .foregroundStyle(scoreTint)
+                    .foregroundStyle(isLocal ? accent : .primary)
                     .contentTransition(.numericText())
                 if multiplier > 1 {
                     Text("×\(multiplier)")
@@ -275,9 +388,35 @@ private struct VersusScoreChip: View {
                 .foregroundStyle(.secondary)
                 .monospacedDigit()
         }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: Alignment(horizontal: alignment, vertical: .top))
+        .background {
+            if isLocal {
+                // Accent-tinted glass pill — gives the local chip extra
+                // weight without competing with card art on the board.
+                RoundedRectangle(cornerRadius: 18)
+                    .fill(accent.opacity(0.12))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 18)
+                            .strokeBorder(accent.opacity(0.25), lineWidth: 1)
+                    }
+            } else {
+                RoundedRectangle(cornerRadius: 18)
+                    .fill(.ultraThinMaterial)
+            }
+        }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(name): \(score) points")
+        .accessibilityLabel(accessibilitySummary)
+    }
+
+    private var accessibilitySummary: String {
+        var parts = ["\(isLocal ? "You, " : "")\(name): \(score) points"]
+        parts.append(String(localized: "^[\(trios) trio](inflect: true)"))
+        if multiplier > 1 {
+            parts.append("\(multiplier)× combo")
+        }
+        return parts.joined(separator: ", ")
     }
 }
 

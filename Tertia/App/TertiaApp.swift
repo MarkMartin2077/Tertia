@@ -14,6 +14,7 @@ struct TertiaApp: App {
     @State private var dailyStore: DailyStore
     @State private var sessionStore: GameSessionStore
     @State private var versusStore: VersusStore
+    @State private var versusBestsStore: VersusBestsStore
     @State private var feedback = FeedbackService()
     @State private var gameCenter = GameCenterService()
 
@@ -22,6 +23,7 @@ struct TertiaApp: App {
         let daily = DailyStore()
         let sessions = GameSessionStore()
         let versus = VersusStore()
+        let bests = VersusBestsStore()
         ScreenshotMockData.populateIfRequested(
             highScores: high,
             daily: daily,
@@ -32,6 +34,7 @@ struct TertiaApp: App {
         _dailyStore = State(initialValue: daily)
         _sessionStore = State(initialValue: sessions)
         _versusStore = State(initialValue: versus)
+        _versusBestsStore = State(initialValue: bests)
     }
 
     var body: some Scene {
@@ -42,6 +45,7 @@ struct TertiaApp: App {
                 .environment(dailyStore)
                 .environment(sessionStore)
                 .environment(versusStore)
+                .environment(versusBestsStore)
                 .environment(feedback)
                 .environment(gameCenter)
                 .gameCenterAuthenticationCover(service: gameCenter)

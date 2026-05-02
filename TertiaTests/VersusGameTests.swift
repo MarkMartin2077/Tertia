@@ -16,7 +16,15 @@ import Testing
 @MainActor
 struct VersusGameTests {
 
-    private static let timings = MatchSessionTimings.unitTest
+    /// VersusGame tests don't exercise watchdog behavior — that's covered in
+    /// MatchSessionTests. Use a generous disconnect grace here so the
+    /// watchdog can't fire mid-test under MainActor contention and trip
+    /// `observeSessionState` into a phantom `.draw` finish.
+    private static let timings = MatchSessionTimings(
+        heartbeatInterval: .milliseconds(50),
+        disconnectGrace: .seconds(30),
+        watchdogPoll: .milliseconds(50)
+    )
 
     private struct Pair {
         let hostGame: VersusGame

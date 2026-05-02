@@ -24,6 +24,15 @@ enum MatchConnectionEvent: Sendable, Equatable {
     case failed(reason: String)
 }
 
+/// Delivery semantics for a transport send. `.reliable` queues and retries;
+/// use it for state-changing messages (claims, deck seeds, rematch). `.unreliable`
+/// is fire-and-forget; use it for heartbeats and other disposable signals
+/// where queueing would just build backpressure.
+enum MatchSendReliability: Sendable, Equatable {
+    case reliable
+    case unreliable
+}
+
 /// Anything that can shuttle bytes between the local player and exactly one
 /// remote player. We're 1v1-only by design — extending this protocol to
 /// >2 players is a deliberate future scope decision, not a casual change.
@@ -37,13 +46,21 @@ protocol MatchTransport: AnyObject, Sendable {
     /// Connection lifecycle events (connect, disconnect, failure).
     var connectionEvents: AsyncStream<MatchConnectionEvent> { get }
 
-    /// Reliable, ordered send to the remote peer. Throws if the underlying
-    /// transport is gone (peer disconnected, match torn down).
-    func send(_ data: Data) async throws
+    /// Sends data with the requested delivery guarantees. Throws if the
+    /// underlying transport is gone (peer disconnected, match torn down).
+    func send(_ data: Data, reliability: MatchSendReliability) async throws
 
     /// Tears down the underlying connection. Idempotent — calling more than
     /// once is harmless.
     func disconnect()
+}
+
+extension MatchTransport {
+    /// Convenience: defaults to reliable so existing call sites and tests
+    /// keep their previous semantics.
+    func send(_ data: Data) async throws {
+        try await send(data, reliability: .reliable)
+    }
 }
 
 // MARK: - Production: GKMatch
@@ -82,11 +99,14 @@ final class GKMatchTransport: NSObject, MatchTransport, @unchecked Sendable, GKM
         match.players.first?.gamePlayerID
     }
 
-    func send(_ data: Data) async throws {
+    func send(_ data: Data, reliability: MatchSendReliability) async throws {
         // sendData(toAllPlayers:) is the simplest 1v1 path; we only have one
         // remote peer so "all" == "the opponent." Reliable mode preserves
-        // ordering, which the claim-arbitration logic depends on.
-        try match.sendData(toAllPlayers: data, with: .reliable)
+        // ordering, which the claim-arbitration logic depends on; unreliable
+        // is used for heartbeats so a transient queue blip doesn't trigger
+        // GameKit's reliable-mode backpressure.
+        let mode: GKMatch.SendDataMode = reliability == .reliable ? .reliable : .unreliable
+        try match.sendData(toAllPlayers: data, with: mode)
     }
 
     func disconnect() {
@@ -165,7 +185,7 @@ final class StubMatchTransport: MatchTransport, @unchecked Sendable {
         self.eventsContinuation = eventsCont
     }
 
-    func send(_ data: Data) async throws {
+    func send(_ data: Data, reliability: MatchSendReliability) async throws {
         if let error = nextSendError {
             nextSendError = nil
             throw error

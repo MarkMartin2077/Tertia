@@ -18,11 +18,15 @@ struct ContentView: View {
     @Environment(DailyStore.self) private var dailyStore
     @State private var selectedTab: AppTab = .play
     @State private var requestedPlayMode: GameMode?
+    @State private var requestedInvite: PendingMatchInvite?
 
     var body: some View {
         TabView(selection: $selectedTab) {
             Tab("Play", systemImage: "gamecontroller.fill", value: AppTab.play) {
-                PlayCoordinator(requestedMode: $requestedPlayMode)
+                PlayCoordinator(
+                    requestedMode: $requestedPlayMode,
+                    requestedInvite: $requestedInvite
+                )
             }
             Tab("Stats", systemImage: "chart.bar.fill", value: AppTab.stats) {
                 StatsView(onPlay: { mode in
@@ -56,6 +60,15 @@ struct ContentView: View {
             requestedPlayMode = request.suggestedMode
             selectedTab = .play
             gameCenter.clearPendingActivityRequest()
+        }
+        .onChange(of: gameCenter.pendingMatchInvite) { _, invite in
+            guard let invite else { return }
+            // Friend tapped Accept on a Messages invite — surface to the
+            // Play tab and let PlayCoordinator open the invite-driven
+            // matchmaker. Consume so we don't re-fire on later view updates.
+            requestedInvite = invite
+            selectedTab = .play
+            gameCenter.clearPendingMatchInvite()
         }
     }
 

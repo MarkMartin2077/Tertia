@@ -89,6 +89,29 @@ final class VersusStore {
         return Double(winCount) / Double(completed)
     }
 
+    /// Series record vs a specific opponent, matched by GameKit display name.
+    /// Returns wins (you beat them or they forfeited) and losses (they beat
+    /// you or you forfeited). Draws are excluded — head-to-head is meant to
+    /// answer "who's ahead in this rivalry," not "how many games have we
+    /// played." Caller is responsible for hiding the UI when both are zero.
+    ///
+    /// Display name is the only identifier we have today; if the opponent
+    /// renames their Game Center account the streak resets. Acceptable
+    /// tradeoff for a v1 — proper opponent IDs would require carrying
+    /// `GKPlayer.gamePlayerID` through `VersusMatchRecord`.
+    func headToHead(against opponentDisplayName: String) -> (wins: Int, losses: Int) {
+        var wins = 0
+        var losses = 0
+        for match in matches where match.opponentDisplayName == opponentDisplayName {
+            switch match.outcome {
+            case .win: wins += 1
+            case .loss, .forfeit: losses += 1
+            case .draw: break
+            }
+        }
+        return (wins, losses)
+    }
+
     // MARK: - Persistence
 
     private func load() {

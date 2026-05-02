@@ -44,13 +44,13 @@ struct MatchSessionTimings: Sendable, Equatable {
     /// of more wakeups.
     var watchdogPoll: Duration
 
-    static let production = MatchSessionTimings(
+    nonisolated static let production = MatchSessionTimings(
         heartbeatInterval: .seconds(5),
         disconnectGrace: .seconds(20),
         watchdogPoll: .seconds(1)
     )
 
-    static let unitTest = MatchSessionTimings(
+    nonisolated static let unitTest = MatchSessionTimings(
         heartbeatInterval: .milliseconds(50),
         disconnectGrace: .milliseconds(200),
         watchdogPoll: .milliseconds(20)
@@ -129,16 +129,18 @@ final class MatchSession {
         return localPlayerID < remote
     }
 
-    /// Encodes and sends a message to the peer. Failures (transport gone,
-    /// peer dropped) flip state to `.disconnected(.transportFailure)` and
-    /// shut down the session.
+    /// Encodes and sends a message to the peer. Failures (transport blip,
+    /// transient GameKit error) are logged but do NOT tear down the session
+    /// — a single send error is rarely terminal, and tearing down on the
+    /// first failure means a momentary network hiccup ends an otherwise
+    /// healthy match. Persistent failures get caught by the watchdog instead
+    /// (no incoming traffic for `disconnectGrace` → `.peerSilent`).
     func send(_ message: VersusMessage) async {
         do {
             let data = try encoder.encode(message)
-            try await transport.send(data)
+            try await transport.send(data, reliability: .reliable)
         } catch {
-            logger.error("Send failed: \(error.localizedDescription)")
-            transition(to: .disconnected(reason: .transportFailure(error.localizedDescription)))
+            logger.error("Send failed (\(String(describing: message))): \(error.localizedDescription)")
         }
     }
 
@@ -193,7 +195,17 @@ final class MatchSession {
                 return
             }
             guard case .active = state else { continue }
-            await send(.heartbeat(at: clock()))
+            // Heartbeats are pure keepalive; use unreliable mode so a
+            // transient failure doesn't accumulate in GameKit's reliable
+            // queue. Errors are swallowed silently — if heartbeats stop
+            // arriving in BOTH directions, the watchdog catches it via
+            // disconnectGrace.
+            do {
+                let data = try encoder.encode(VersusMessage.heartbeat(at: clock()))
+                try await transport.send(data, reliability: .unreliable)
+            } catch {
+                logger.debug("Heartbeat send failed (transient): \(error.localizedDescription)")
+            }
         }
     }
 

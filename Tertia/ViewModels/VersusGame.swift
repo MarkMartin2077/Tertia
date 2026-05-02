@@ -175,6 +175,15 @@ final class VersusGame: Identifiable {
         outcome != nil
     }
 
+    /// Whether the underlying transport is still alive. Used by the
+    /// game-over sheet to disable Rematch when the session has already
+    /// torn down — a tap on Rematch would just sit silently for 15s
+    /// otherwise (timeout flips to opponentDeclined).
+    var isSessionConnected: Bool {
+        if case .disconnected = session.state { return false }
+        return true
+    }
+
     // MARK: - Init
 
     init(
@@ -353,10 +362,12 @@ final class VersusGame: Identifiable {
         switch rematchState {
         case .idle:
             rematchState = .localRequested
+            logger.info("Rematch: requesting from \(self.localPlayerID); session state=\(String(describing: self.session.state))")
             await session.send(.rematchRequest(by: localPlayerID))
             scheduleRematchTimeout()
         case .opponentRequested:
             rematchState = .agreed
+            logger.info("Rematch: agreeing (opponent already requested); session state=\(String(describing: self.session.state))")
             await session.send(.rematchRequest(by: localPlayerID))
             await applyRematchAgreement()
         case .localRequested, .agreed, .opponentDeclined:
@@ -813,6 +824,7 @@ final class VersusGame: Identifiable {
     }
 
     private func handleRematchRequest() async {
+        logger.info("Rematch: received request from peer; outcome=\(String(describing: self.outcome)) state=\(String(describing: self.rematchState))")
         guard outcome != nil else { return }
         switch rematchState {
         case .idle:
@@ -849,10 +861,12 @@ final class VersusGame: Identifiable {
                 if outcome == nil {
                     let result = outcomeForDisconnect(reason: reason)
                     finish(outcome: result.outcome, winSource: result.winSource)
-                } else if isRematchPending {
-                    // Game already ended naturally; opponent dropped during
-                    // the rematch wait. Surface "opponent declined" so the
-                    // local UI doesn't sit at "Waiting…" for the full 15s.
+                } else if rematchState != .opponentDeclined && rematchState != .agreed {
+                    // Game already ended naturally; the session has now died
+                    // (peer left, watchdog timeout, transport failure). A
+                    // rematch can't reach the opponent over a dead transport,
+                    // so surface that immediately rather than letting the UI
+                    // sit at "Waiting…" for the full 15s.
                     rematchState = .opponentDeclined
                 }
                 return

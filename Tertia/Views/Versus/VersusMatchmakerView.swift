@@ -3,12 +3,11 @@
 //  Tertia
 //
 //  Bridges GKMatchmakerViewController into SwiftUI. The matchmaker UI itself
-//  is owned by Apple — we configure a GKMatchRequest, present it, and route
-//  delegate callbacks back through three closures.
-//
-//  Phase 3 stops at "match found" — the resulting GKMatch is handed to the
-//  caller via `onMatch`, which currently surfaces a placeholder. Phase 4
-//  swaps that placeholder for a real VersusGameView.
+//  is owned by Apple — we either configure a fresh GKMatchRequest (Quick
+//  Match / Invite Friend, kicked off from inside the app) or hand off an
+//  inbound `GKInvite` the local player just accepted from Messages.
+//  Either way, the resulting `GKMatch` is delivered through the same
+//  `onMatch` callback so PlayCoordinator's plumbing stays uniform.
 //
 
 import SwiftUI
@@ -35,26 +34,72 @@ enum VersusMatchIntent: String, Identifiable, Equatable {
     }
 }
 
+/// What seeds the matchmaker. Either a fresh request (we initiated) or an
+/// invite the local player accepted (they were invited by someone else).
+enum VersusMatchmakerSource {
+    case intent(VersusMatchIntent)
+    case acceptedInvite(GKInvite)
+}
+
 struct VersusMatchmakerView: UIViewControllerRepresentable {
-    let intent: VersusMatchIntent
+    let source: VersusMatchmakerSource
     let onMatch: (GKMatch) -> Void
     let onCancel: () -> Void
     let onError: (Error) -> Void
 
+    /// Convenience initializer for the intent-driven flow (Quick Match /
+    /// Invite Friend) so existing call sites don't have to spell out the
+    /// `.intent(...)` wrapping.
+    init(
+        intent: VersusMatchIntent,
+        onMatch: @escaping (GKMatch) -> Void,
+        onCancel: @escaping () -> Void,
+        onError: @escaping (Error) -> Void
+    ) {
+        self.source = .intent(intent)
+        self.onMatch = onMatch
+        self.onCancel = onCancel
+        self.onError = onError
+    }
+
+    init(
+        source: VersusMatchmakerSource,
+        onMatch: @escaping (GKMatch) -> Void,
+        onCancel: @escaping () -> Void,
+        onError: @escaping (Error) -> Void
+    ) {
+        self.source = source
+        self.onMatch = onMatch
+        self.onCancel = onCancel
+        self.onError = onError
+    }
+
     func makeUIViewController(context: Context) -> UIViewController {
-        let request = GKMatchRequest()
-        request.minPlayers = 2
-        request.maxPlayers = 2
-        if intent == .inviteFriend {
-            request.inviteMessage = "Race me on Tertia"
+        let viewController: GKMatchmakerViewController?
+        switch source {
+        case .intent(let intent):
+            let request = GKMatchRequest()
+            request.minPlayers = 2
+            request.maxPlayers = 2
+            if intent == .inviteFriend {
+                request.inviteMessage = "Race me on Tertia"
+            }
+            viewController = GKMatchmakerViewController(matchRequest: request)
+            viewController?.matchmakingMode = intent.matchmakingMode
+
+        case .acceptedInvite(let invite):
+            // Invite-driven path: GameKit already negotiated the players;
+            // the matchmaker UI just shows the connecting state until the
+            // GKMatch is ready.
+            viewController = GKMatchmakerViewController(invite: invite)
         }
 
-        guard let viewController = GKMatchmakerViewController(matchRequest: request) else {
+        guard let viewController else {
             // GameKit returns nil only when the request is malformed. Our
-            // request is hardcoded; this is unreachable with current code.
+            // requests are hardcoded; this is unreachable with current code.
             // Fail loudly in DEBUG so we hear about it if Apple changes the
             // contract; degrade gracefully in production.
-            assertionFailure("GKMatchmakerViewController init returned nil for a 1v1 request")
+            assertionFailure("GKMatchmakerViewController init returned nil")
             logger.error("GKMatchmakerViewController init returned nil — surfacing transient error")
             Task { @MainActor in
                 onError(VersusMatchmakerError.initFailed)
@@ -62,7 +107,6 @@ struct VersusMatchmakerView: UIViewControllerRepresentable {
             return UIViewController()
         }
 
-        viewController.matchmakingMode = intent.matchmakingMode
         viewController.matchmakerDelegate = context.coordinator
         return viewController
     }

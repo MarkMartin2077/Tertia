@@ -28,6 +28,23 @@ enum LeaderboardID {
     /// Today's daily puzzle score. Configured in App Store Connect as a
     /// recurring (daily) leaderboard so it resets every midnight.
     static let dailyScoreToday = "tertia.daily_score_today"
+
+    // MARK: - Versus
+    //
+    // App Store Connect must declare each of these before submissions
+    // succeed. All three use "Best Score" submission type so a lower
+    // attempt never overwrites a player's high mark.
+    //
+    // - `versusWins`: cumulative wins. Submitted as a running total each
+    //   time the player wins; GameKit dedupes via best-score semantics so
+    //   resubmitting the same total is a no-op.
+    // - `versusFastestSet`: per-match fastest trio claim, in *milliseconds*
+    //   (lower is better → this leaderboard must be configured as
+    //   "Low to High" in App Store Connect).
+    // - `versusLongestCombo`: longest scoring streak in a single match.
+    static let versusWins = "tertia.versus_wins"
+    static let versusFastestSet = "tertia.versus_fastest_set_ms"
+    static let versusLongestCombo = "tertia.versus_longest_combo"
 }
 
 /// Captures a Game Center activity launch request. Consumed by `ContentView`
@@ -43,6 +60,19 @@ struct GameActivityRequest: Equatable {
         case "tertia.activity.play": return .timeAttack
         default: return .timeAttack
         }
+    }
+}
+
+/// A GameKit invite that the local player has accepted (typically by
+/// tapping the invite in Messages). Wraps `GKInvite` with a stable UUID so
+/// SwiftUI's `Identifiable` / `.onChange(of:)` plumbing can detect it as a
+/// new event even if the same `GKInvite` reference re-arrives.
+struct PendingMatchInvite: Identifiable, Equatable {
+    let id = UUID()
+    let invite: GKInvite
+
+    static func == (lhs: PendingMatchInvite, rhs: PendingMatchInvite) -> Bool {
+        lhs.id == rhs.id
     }
 }
 
@@ -63,6 +93,14 @@ final class GameCenterService {
     /// calls `clearPendingActivityRequest` to consume it.
     private(set) var pendingActivityRequest: GameActivityRequest?
 
+    /// Pending GameKit match invite the local player accepted (typically from
+    /// Messages). ContentView observes this to switch to the Play tab and
+    /// hand the invite to the matchmaker, then calls
+    /// `clearPendingMatchInvite` to consume it. Without this listener the
+    /// app launches into the default tab and the accepted invite goes
+    /// nowhere — the friend lands on Play instead of the match.
+    private(set) var pendingMatchInvite: PendingMatchInvite?
+
     /// Guard against double-registering the activity listener. GameKit's auth
     /// handler can fire repeatedly across a session (account switches, scene
     /// transitions); register once and stay registered.
@@ -82,10 +120,20 @@ final class GameCenterService {
                 self?.pendingActivityRequest = GameActivityRequest(activityID: activityID)
             }
         }
+        activityListener.onInviteAccepted = { [weak self] invite in
+            Task { @MainActor [weak self] in
+                self?.pendingMatchInvite = PendingMatchInvite(invite: invite)
+                logger.info("Surfaced accepted GameKit invite to UI")
+            }
+        }
     }
 
     func clearPendingActivityRequest() {
         pendingActivityRequest = nil
+    }
+
+    func clearPendingMatchInvite() {
+        pendingMatchInvite = nil
     }
     /// Whether the local player has authenticated with Game Center this
     /// session. Drives whether we attempt submissions and whether the
@@ -181,6 +229,28 @@ final class GameCenterService {
         await submit(score: score, to: LeaderboardID.dailyScoreToday)
     }
 
+    /// Submits the player's running total of Versus wins. Best-score
+    /// semantics on the leaderboard make resubmitting an unchanged total
+    /// a no-op, so callers can fire-and-forget after every win.
+    func submitVersusWins(_ totalWins: Int) async {
+        await submit(score: totalWins, to: LeaderboardID.versusWins)
+    }
+
+    /// Submits the player's fastest trio claim from a single match, in
+    /// milliseconds. The Versus fastest-set leaderboard must be configured
+    /// "Low to High" in App Store Connect — submitting in milliseconds keeps
+    /// the integer score precise to ~1ms.
+    func submitVersusFastestSet(seconds: Double) async {
+        guard seconds > 0 else { return }
+        let ms = Int((seconds * 1000).rounded())
+        await submit(score: ms, to: LeaderboardID.versusFastestSet)
+    }
+
+    /// Submits the longest scoring streak from a single Versus match.
+    func submitVersusLongestCombo(_ streak: Int) async {
+        await submit(score: streak, to: LeaderboardID.versusLongestCombo)
+    }
+
     private func submit(score: Int, to leaderboardID: String) async {
         guard score > 0 else { return }
 
@@ -222,20 +292,27 @@ final class GameCenterService {
     }
 }
 
-/// Bridges Apple's `GKGameActivityListener` callbacks. NSObject conformance is
-/// required by GameKit; kept as a small private class so the @Observable
-/// service doesn't have to inherit from NSObject.
+/// Bridges Apple's `GKGameActivityListener` and `GKInviteEventListener`
+/// callbacks. NSObject conformance is required by GameKit; kept as a small
+/// private class so the @Observable service doesn't have to inherit from
+/// NSObject.
 ///
 /// Tertia doesn't deep-link to specific modes from activities yet — the
-/// completion handler is called immediately to acknowledge the request,
-/// which lets the system continue its launch flow without errors. If we
-/// later want "Play" from Game Center to drop the user straight into Time
-/// Attack, this is where that routing would live.
-private final class ActivityListener: NSObject, GKLocalPlayerListener, GKGameActivityListener {
+/// activity completion handler is called immediately to acknowledge the
+/// request. The invite callback (`player(_:didAccept:)`) fires when the
+/// local player accepts a GameKit invite from Messages or notifications;
+/// without this conformance the invite has nowhere to land and the app
+/// just opens to the default tab.
+private final class ActivityListener: NSObject, GKLocalPlayerListener, GKGameActivityListener, GKInviteEventListener {
     /// Set by `GameCenterService` to receive the activity ID when iOS asks
     /// the listener to launch an activity. The closure is `@Sendable` so it
     /// can hop to the main actor safely.
     var onActivityRequest: (@Sendable (String) -> Void)?
+
+    /// Set by `GameCenterService` to receive an accepted invite. `GKInvite`
+    /// isn't formally Sendable; we ferry it across the actor boundary via
+    /// `SendableInviteBox` and consume on @MainActor only.
+    var onInviteAccepted: (@Sendable (GKInvite) -> Void)?
 
     func player(
         _ player: GKPlayer,
@@ -245,4 +322,21 @@ private final class ActivityListener: NSObject, GKLocalPlayerListener, GKGameAct
         onActivityRequest?(activity.identifier)
         completionHandler(true)
     }
+
+    func player(_ player: GKPlayer, didAccept invite: GKInvite) {
+        // GameKit calls invite listeners on the main thread today; we still
+        // route through the box-and-Sendable-closure pattern so concurrency
+        // checking stays clean if Apple ever changes that contract.
+        let box = SendableInviteBox(invite)
+        onInviteAccepted?(box.value)
+    }
+}
+
+/// Lets us pass a `GKInvite` reference through a `@Sendable` closure
+/// boundary. `GKInvite` (an NSObject subclass) is not formally Sendable,
+/// but we only ever read its properties on @MainActor inside the matchmaker
+/// flow, so the unchecked conformance is sound for this single use site.
+private struct SendableInviteBox: @unchecked Sendable {
+    let value: GKInvite
+    init(_ value: GKInvite) { self.value = value }
 }

@@ -14,6 +14,9 @@ struct VersusGameOverSheet: View {
     let onDone: () -> Void
     let onFindNewMatch: () -> Void
 
+    @Environment(FeedbackService.self) private var feedback
+    @Environment(VersusStore.self) private var versusStore
+
     init(
         game: VersusGame,
         onDone: @escaping () -> Void,
@@ -29,11 +32,19 @@ struct VersusGameOverSheet: View {
             VStack(spacing: 8) {
                 Text(headlineTitle)
                     .font(.largeTitle.bold())
+                    .foregroundStyle(headlineTint)
                     .multilineTextAlignment(.center)
                 Text(headlineSubtitle)
                     .font(.title3)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
+                if let h2h = headToHeadSummary {
+                    Text(h2h)
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.tertiary)
+                        .monospacedDigit()
+                        .accessibilityLabel("Series record: \(h2h)")
+                }
             }
 
             HStack(spacing: 16) {
@@ -43,7 +54,7 @@ struct VersusGameOverSheet: View {
                     trios: game.localTrios,
                     longestStreak: game.localLongestStreak,
                     fastestSetSeconds: game.localFastestSetSeconds,
-                    tint: GameMode.versus.accentColor
+                    tint: localColumnTint
                 )
                 PlayerStatColumn(
                     name: game.remoteDisplayName,
@@ -51,7 +62,7 @@ struct VersusGameOverSheet: View {
                     trios: game.remoteTrios,
                     longestStreak: game.remoteLongestStreak,
                     fastestSetSeconds: game.remoteFastestSetSeconds,
-                    tint: .secondary
+                    tint: remoteColumnTint
                 )
             }
 
@@ -63,7 +74,20 @@ struct VersusGameOverSheet: View {
         }
         .padding(32)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .overlay(alignment: .top) {
+            // Confetti is purely celebratory — only render on a true win.
+            // `.opponentForfeited` / `.opponentDisconnected` wins still get
+            // confetti because the local player technically won.
+            if game.outcome == .win {
+                ConfettiView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .ignoresSafeArea()
+            }
+        }
         .accessibilityAddTraits(.isModal)
+        .onAppear {
+            playOutcomeFeedback()
+        }
     }
 
     private var headlineTitle: String {
@@ -71,7 +95,7 @@ struct VersusGameOverSheet: View {
         case .win: return "You won!"
         case .loss: return "You lost"
         case .draw: return "Draw"
-        case .forfeit: return "You forfeited"
+        case .forfeit: return "Match ended"
         case .none: return "Match complete"
         }
     }
@@ -95,6 +119,53 @@ struct VersusGameOverSheet: View {
             return "\(game.remoteDisplayName) takes the win."
         case .none:
             return ""
+        }
+    }
+
+    /// "3-2 vs Alex" — pulled from VersusStore by opponent display name.
+    /// Returns nil when this is the first match against this opponent (don't
+    /// show "0-0" — feels weird as a hero stat).
+    private var headToHeadSummary: String? {
+        let h2h = versusStore.headToHead(against: game.remoteDisplayName)
+        guard h2h.wins + h2h.losses > 0 else { return nil }
+        return "\(h2h.wins)-\(h2h.losses) vs \(game.remoteDisplayName)"
+    }
+
+    /// Title color shifts with outcome — we want the screen to *feel*
+    /// different on win vs loss vs forfeit, not just the words to differ.
+    private var headlineTint: Color {
+        switch game.outcome {
+        case .win: return GameMode.versus.accentColor
+        case .loss: return .secondary
+        case .draw: return .primary
+        case .forfeit: return .secondary
+        case .none: return .primary
+        }
+    }
+
+    /// Local column wears the accent on win/draw; on loss/forfeit the accent
+    /// shifts to the remote column so the visual energy points at whoever
+    /// actually came out ahead.
+    private var localColumnTint: Color {
+        switch game.outcome {
+        case .win, .draw: return GameMode.versus.accentColor
+        case .loss, .forfeit, .none: return .secondary
+        }
+    }
+
+    private var remoteColumnTint: Color {
+        switch game.outcome {
+        case .loss, .forfeit: return GameMode.versus.accentColor
+        case .win, .draw, .none: return .secondary
+        }
+    }
+
+    private func playOutcomeFeedback() {
+        switch game.outcome {
+        case .win: feedback.personalBest()
+        case .loss, .forfeit: feedback.timerExpired()
+        case .draw: feedback.timerWarning()
+        case .none: break
         }
     }
 }
@@ -198,30 +269,76 @@ private struct RematchActionArea: View {
 
     var body: some View {
         Group {
-            switch game.rematchState {
-            case .idle:
-                IdleActions(game: game, onDone: onDone)
-            case .localRequested:
-                WaitingActions(game: game, onDone: onDone)
-            case .opponentRequested:
-                OpponentReadyActions(game: game, onDone: onDone)
-            case .agreed:
-                // Brief transition state — sheet will dismiss when outcome
-                // flips back to nil. Show a placeholder so the buttons don't
-                // flash an in-between layout.
-                ProgressView("Starting…")
-                    .controlSize(.large)
-                    .padding()
-            case .opponentDeclined:
-                DeclinedActions(
+            // Once the session is dead, no rematch handshake can succeed —
+            // skip the in-flight states (idle/localRequested/opponentRequested)
+            // and show the "find a new match" path immediately. `.agreed`
+            // is a brief transition state we leave alone; if the session
+            // dies mid-rematch the new game will fail through its own path.
+            if !game.isSessionConnected, game.rematchState != .agreed {
+                ConnectionLostActions(
                     opponentName: game.remoteDisplayName,
                     onFindNewMatch: onFindNewMatch,
                     onDone: onDone
                 )
+            } else {
+                switch game.rematchState {
+                case .idle:
+                    IdleActions(game: game, onDone: onDone)
+                case .localRequested:
+                    WaitingActions(game: game, onDone: onDone)
+                case .opponentRequested:
+                    OpponentReadyActions(game: game, onDone: onDone)
+                case .agreed:
+                    // Brief transition state — sheet will dismiss when outcome
+                    // flips back to nil. Show a placeholder so the buttons don't
+                    // flash an in-between layout.
+                    ProgressView("Starting…")
+                        .controlSize(.large)
+                        .padding()
+                case .opponentDeclined:
+                    DeclinedActions(
+                        opponentName: game.remoteDisplayName,
+                        onFindNewMatch: onFindNewMatch,
+                        onDone: onDone
+                    )
+                }
             }
         }
         .animation(.spring(response: 0.4, dampingFraction: 0.85), value: game.rematchState)
+        .animation(.spring(response: 0.4, dampingFraction: 0.85), value: game.isSessionConnected)
         .transition(.opacity.combined(with: .move(edge: .bottom)))
+    }
+}
+
+private struct ConnectionLostActions: View {
+    let opponentName: String
+    let onFindNewMatch: () -> Void
+    let onDone: () -> Void
+
+    var body: some View {
+        VStack(spacing: 12) {
+            HStack(spacing: 6) {
+                Image(systemName: "wifi.exclamationmark")
+                Text("Connection to \(opponentName) lost.")
+                    .font(.subheadline.weight(.medium))
+            }
+            .foregroundStyle(.orange)
+
+            Button(action: onFindNewMatch) {
+                Label("Find a new match", systemImage: "bolt.fill")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .tint(GameMode.versus.accentColor)
+
+            Button(action: onDone) {
+                Text("Done")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.large)
+        }
     }
 }
 
@@ -239,7 +356,7 @@ private struct IdleActions: View {
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
-            .tint(.teal)
+            .tint(GameMode.versus.accentColor)
 
             Button(action: {
                 Task { await game.declineRematch() }
@@ -294,17 +411,19 @@ private struct OpponentReadyActions: View {
                 Text("\(game.remoteDisplayName) is ready to go again.")
                     .font(.subheadline.weight(.medium))
             }
-            .foregroundStyle(.teal)
+            .foregroundStyle(GameMode.versus.accentColor)
 
             Button {
                 Task { await game.requestRematch() }
             } label: {
-                Label("Rematch", systemImage: "arrow.clockwise")
+                // Different verb than the idle "Rematch" so the relationship
+                // between the message above and the action is unmistakable.
+                Label("Accept Rematch", systemImage: "arrow.clockwise")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
-            .tint(.teal)
+            .tint(GameMode.versus.accentColor)
 
             Button(action: {
                 Task { await game.declineRematch() }
@@ -336,7 +455,7 @@ private struct DeclinedActions: View {
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
-            .tint(.teal)
+            .tint(GameMode.versus.accentColor)
 
             Button(action: onDone) {
                 Text("Done")
