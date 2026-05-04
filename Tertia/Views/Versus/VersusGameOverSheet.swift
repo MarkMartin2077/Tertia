@@ -194,7 +194,16 @@ private struct PlayerStatColumn: View {
                 .foregroundStyle(tint == .secondary ? .primary : tint)
 
             VStack(alignment: .leading, spacing: 4) {
-                StatLine(icon: "checkmark.seal.fill", color: .teal, label: "^[\(trios) trio](inflect: true)")
+                // Plain ternary pluralization — `String(localized:"^[…]")`
+                // only resolves inflection when a String Catalog entry exists
+                // in the bundle, which Tertia (English-only, no catalog)
+                // doesn't have. The runtime would otherwise return the
+                // literal markdown.
+                StatLine(
+                    icon: "checkmark.seal.fill",
+                    color: .teal,
+                    label: "\(trios) \(trios == 1 ? "trio" : "trios")"
+                )
                 if longestStreak >= 2 {
                     StatLine(
                         icon: "flame.fill",
@@ -203,13 +212,11 @@ private struct PlayerStatColumn: View {
                     )
                 }
                 if let seconds = fastestSetSeconds {
+                    let formatted = seconds.formatted(.number.precision(.fractionLength(1)))
                     StatLine(
                         icon: "bolt.fill",
                         color: .yellow,
-                        // String literal so it coerces to LocalizedStringKey
-                        // — passing a String variable to a LocalizedStringKey
-                        // parameter doesn't compile.
-                        label: "\(seconds.formatted(.number.precision(.fractionLength(1))))s fastest"
+                        label: "\(formatted)s fastest"
                     )
                 }
             }
@@ -242,20 +249,23 @@ private struct PlayerStatColumn: View {
 private struct StatLine: View {
     let icon: String
     let color: Color
-    /// `LocalizedStringKey` so `Text(label)` runs the value through the
-    /// localization machinery — required for `^[…](inflect: true)` markdown
-    /// to actually pluralize. A `String` parameter would resolve to the
-    /// `Text(_ verbatim:)` overload and render the markdown literally.
-    let label: LocalizedStringKey
+    /// Plain `String` — callers resolve any `^[…](inflect:)` markdown via
+    /// `String(localized:)` before constructing the line. A `Text(verbatim:)`
+    /// overload here is intentional: it sidesteps the LocalizedStringKey path
+    /// that was silently breaking inflection inside the column.
+    let label: String
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(alignment: .top, spacing: 6) {
             Image(systemName: icon)
                 .foregroundStyle(color)
                 .imageScale(.small)
                 .frame(width: 14)
-            Text(label)
+            Text(verbatim: label)
                 .font(.caption.weight(.medium))
+                .lineLimit(2)
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 }

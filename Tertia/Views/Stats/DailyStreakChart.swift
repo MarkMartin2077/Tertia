@@ -5,13 +5,38 @@
 
 import SwiftUI
 
-/// Calendar heatmap of the most recent N days. Each cell is a calendar day,
-/// tinted by score tier; days with no record render as a faint placeholder so
-/// the user can see gaps in their streak.
+/// Selectable range for the streak heatmap. Week is the default — it
+/// focuses the eye on the player's last seven days; Month expands to a
+/// dense 30-day grid for the broader view.
+enum DailyStreakRange: String, CaseIterable, Identifiable {
+    case week
+    case month
+
+    var id: String { rawValue }
+    var dayCount: Int { self == .week ? 7 : 30 }
+    var label: String { self == .week ? "Week" : "Month" }
+}
+
+/// Streak heatmap. Renders the most recent N days (rolling, ending today)
+/// in one of two layouts: a single-row "week strip" with day-of-week
+/// letters above, or a denser multi-row grid for the month view. Each
+/// cell tints by score tier; days with no record render as a faint
+/// placeholder so gaps are visible.
 struct DailyStreakChart: View {
     let records: [DailyRecord]
     let today: Date
-    var dayCount: Int = 35
+    /// Initial range. The chart owns its own selection state internally,
+    /// so this only sets the starting position.
+    var initialRange: DailyStreakRange = .week
+
+    @State private var range: DailyStreakRange
+
+    init(records: [DailyRecord], today: Date, initialRange: DailyStreakRange = .week) {
+        self.records = records
+        self.today = today
+        self.initialRange = initialRange
+        self._range = State(initialValue: initialRange)
+    }
 
     private let calendar = Calendar.current
     private let columnSpacing: CGFloat = 6
@@ -22,7 +47,7 @@ struct DailyStreakChart: View {
         let recordsByDay = Dictionary(uniqueKeysWithValues: records.map { record in
             (calendar.startOfDay(for: record.day), record.score)
         })
-        return (0..<dayCount).reversed().map { offset in
+        return (0..<range.dayCount).reversed().map { offset in
             let date = calendar.date(byAdding: .day, value: -offset, to: startOfToday) ?? startOfToday
             return Day(date: date, score: recordsByDay[date], isToday: offset == 0)
         }
@@ -31,7 +56,13 @@ struct DailyStreakChart: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             header
-            grid
+            Group {
+                switch range {
+                case .week: weekStrip
+                case .month: monthGrid
+                }
+            }
+            .animation(.easeInOut(duration: 0.18), value: range)
             if records.isEmpty {
                 Text("Complete today's puzzle to start your streak.")
                     .font(.footnote)
@@ -42,19 +73,77 @@ struct DailyStreakChart: View {
         }
     }
 
+    // MARK: - Header
+
     private var header: some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text("Daily Streak")
-                .font(.headline)
-            Spacer()
-            Text("Last \(dayCount) days")
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Daily Streak")
+                    .font(.headline)
+                Spacer()
+                Picker("Range", selection: $range) {
+                    ForEach(DailyStreakRange.allCases) { option in
+                        Text(option.label).tag(option)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .fixedSize()
+                .accessibilityLabel("Streak range")
+            }
+            Text(dateRangeText)
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .monospacedDigit()
+                .accessibilityLabel("Showing \(dateRangeText)")
         }
     }
 
-    private var grid: some View {
-        let columns = Int(ceil(Double(dayCount) / 7.0))
+    /// "Apr 28 – May 4" style range covering the full window. Driven off
+    /// the `days` array so it always matches what's actually rendered —
+    /// flips correctly between week (7-day) and month (30-day) modes.
+    private var dateRangeText: String {
+        guard let start = days.first?.date else { return "" }
+        let style = Date.FormatStyle.dateTime.month(.abbreviated).day()
+        return "\(start.formatted(style)) – \(today.formatted(style))"
+    }
+
+    // MARK: - Week strip
+
+    /// Single-row layout for the 7-day view. Each cell gets a day-of-week
+    /// letter above it, drawn from `Calendar.veryShortWeekdaySymbols` so
+    /// the labels stay locale-correct.
+    private var weekStrip: some View {
+        HStack(alignment: .top, spacing: columnSpacing) {
+            ForEach(days) { day in
+                VStack(spacing: 6) {
+                    Text(weekdayLetter(for: day.date))
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                    cell(for: day)
+                        .aspectRatio(1, contentMode: .fit)
+                }
+                .frame(maxWidth: .infinity)
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(accessibilityLabel(for: day))
+            }
+        }
+    }
+
+    private func weekdayLetter(for date: Date) -> String {
+        // veryShortWeekdaySymbols is indexed 1...7 by Calendar.component(.weekday, from:)
+        // → Sunday = 1.
+        let weekday = calendar.component(.weekday, from: date)
+        let index = weekday - 1
+        let symbols = calendar.veryShortWeekdaySymbols
+        guard symbols.indices.contains(index) else { return "" }
+        return symbols[index]
+    }
+
+    // MARK: - Month grid
+
+    private var monthGrid: some View {
+        let columns = Int(ceil(Double(range.dayCount) / 7.0))
         return LazyVGrid(
             columns: Array(repeating: GridItem(.flexible(), spacing: columnSpacing), count: columns),
             spacing: rowSpacing
@@ -66,6 +155,8 @@ struct DailyStreakChart: View {
             }
         }
     }
+
+    // MARK: - Cell
 
     @ViewBuilder
     private func cell(for day: Day) -> some View {
@@ -128,11 +219,10 @@ private struct Day: Identifiable {
     var id: Date { date }
 }
 
-#Preview("Sparse") {
+#Preview("Sparse — Week") {
     let cal = Calendar.current
     return DailyStreakChart(
         records: [
-            DailyRecord(day: cal.date(byAdding: .day, value: -10, to: .now) ?? .now, score: 4),
             DailyRecord(day: cal.date(byAdding: .day, value: -3, to: .now) ?? .now, score: 7),
             DailyRecord(day: .now, score: 2)
         ],
@@ -141,14 +231,14 @@ private struct Day: Identifiable {
     .padding()
 }
 
-#Preview("Dense") {
+#Preview("Dense — Month default") {
     let cal = Calendar.current
-    let records = (0..<35).compactMap { offset -> DailyRecord? in
+    let records = (0..<30).compactMap { offset -> DailyRecord? in
         guard offset.isMultiple(of: 2) else { return nil }
         guard let date = cal.date(byAdding: .day, value: -offset, to: .now) else { return nil }
         return DailyRecord(day: date, score: Int.random(in: 1...10))
     }
-    return DailyStreakChart(records: records, today: .now)
+    return DailyStreakChart(records: records, today: .now, initialRange: .month)
         .padding()
 }
 

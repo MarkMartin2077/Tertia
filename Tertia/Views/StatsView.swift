@@ -472,7 +472,11 @@ private struct StatTile: View {
                 Text(label)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .lineLimit(2)
+                    // `reservesSpace: true` keeps every tile two lines tall
+                    // even when a label fits on one — without it, "Day streak"
+                    // (1 line) renders shorter than "Best streak" / "Best
+                    // score" (which wrap to 2 in narrow widths).
+                    .lineLimit(2, reservesSpace: true)
                     .minimumScaleFactor(0.75)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -579,24 +583,39 @@ private struct RankBadge: View {
     }
 }
 
+/// Ephemeral, isolated UserDefaults for previews. The default
+/// `UserDefaults.standard` is shared across every preview run AND with the
+/// simulator app, so without isolation the "Empty" preview loads whatever
+/// data was left behind by a prior "Populated" run, and "Populated" keeps
+/// appending across reloads. A unique-suite transient defaults sidesteps
+/// both problems.
+private func ephemeralDefaults() -> UserDefaults {
+    let suiteName = "preview.tertia.\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suiteName) ?? .standard
+    defaults.removePersistentDomain(forName: suiteName)
+    return defaults
+}
+
 #Preview("Empty") {
-    StatsView(onPlay: { _ in })
-        .environment(HighScoreStore())
-        .environment(DailyStore())
-        .environment(GameSessionStore())
-        .environment(VersusStore())
+    let defaults = ephemeralDefaults()
+    return StatsView(onPlay: { _ in })
+        .environment(HighScoreStore(userDefaults: defaults))
+        .environment(DailyStore(userDefaults: defaults))
+        .environment(GameSessionStore(userDefaults: defaults))
+        .environment(VersusStore(userDefaults: defaults))
         .environment(GameCenterService())
 }
 
 #Preview("Populated") {
-    let highScores = HighScoreStore()
+    let defaults = ephemeralDefaults()
+    let highScores = HighScoreStore(userDefaults: defaults)
     let calendar = Calendar.current
     for offset in 0..<10 {
         let date = calendar.date(byAdding: .day, value: -offset, to: .now) ?? .now
         highScores.record(score: Int.random(in: 4...14), durationSeconds: 300, date: date)
     }
-    let daily = DailyStore()
-    let sessions = GameSessionStore()
+    let daily = DailyStore(userDefaults: defaults)
+    let sessions = GameSessionStore(userDefaults: defaults)
     for offset in 0..<10 {
         let date = calendar.date(byAdding: .day, value: -offset, to: .now) ?? .now
         sessions.record(GameSessionRecord(
@@ -606,7 +625,7 @@ private struct RankBadge: View {
             date: date
         ))
     }
-    let versus = VersusStore()
+    let versus = VersusStore(userDefaults: defaults)
     let outcomes: [VersusOutcome] = [.win, .win, .loss, .draw, .win, .forfeit, .win, .loss]
     for (offset, outcome) in outcomes.enumerated() {
         let date = calendar.date(byAdding: .day, value: -offset, to: .now) ?? .now

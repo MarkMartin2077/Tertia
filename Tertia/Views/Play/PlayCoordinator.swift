@@ -12,9 +12,15 @@ struct PlayCoordinator: View {
     @AppStorage("lastGameMode") private var lastGameModeRaw: String = GameMode.normal.rawValue
     @Binding var requestedMode: GameMode?
     @Binding var requestedInvite: PendingMatchInvite?
+    @Environment(GameCenterService.self) private var gameCenter
     @State private var activeMode: GameMode?
     @State private var versusFlow: VersusFlow?
     @State private var matchmakingError: String?
+    /// Set when the user taps Versus while signed out of Game Center.
+    /// Drives the sign-in prompt; once GC auth succeeds, the matchmaker
+    /// opens automatically for this intent.
+    @State private var pendingVersusIntent: VersusMatchIntent?
+    @State private var showGameCenterPrompt = false
 
     init(
         requestedMode: Binding<GameMode?> = .constant(nil),
@@ -28,7 +34,7 @@ struct PlayCoordinator: View {
         ModeSelectView(
             lastPlayed: GameMode(rawValue: lastGameModeRaw),
             onSelect: { mode in startMode(mode) },
-            onVersus: { intent in versusFlow = .matchmaker(.intent(intent)) }
+            onVersus: { intent in startVersus(intent: intent) }
         )
         .fullScreenCover(item: $activeMode) { mode in
             GameView(mode: mode, onExit: { activeMode = nil })
@@ -68,6 +74,15 @@ struct PlayCoordinator: View {
         } message: { message in
             Text(message)
         }
+        .alert(
+            "Sign in to Game Center",
+            isPresented: $showGameCenterPrompt
+        ) {
+            Button("Sign in") { attemptSignInAndProceed() }
+            Button("Cancel", role: .cancel) { pendingVersusIntent = nil }
+        } message: {
+            Text("Versus matches use Game Center to find opponents and track your wins. You only need to sign in once.")
+        }
         .onChange(of: requestedMode) { _, newValue in
             if let mode = newValue {
                 startMode(mode)
@@ -98,6 +113,45 @@ struct PlayCoordinator: View {
     /// stale.
     private func acceptInvite(_ pending: PendingMatchInvite) {
         versusFlow = .matchmaker(.acceptedInvite(pending.invite))
+    }
+
+    /// Either opens the matchmaker immediately (if Game Center is already
+    /// signed in) or stages an inline sign-in prompt and resumes once auth
+    /// succeeds. Avoids forcing a sign-in wall at app launch — users only
+    /// see the GC ask when they actually try to play Versus.
+    private func startVersus(intent: VersusMatchIntent) {
+        if gameCenter.isAuthenticated {
+            versusFlow = .matchmaker(.intent(intent))
+        } else {
+            pendingVersusIntent = intent
+            showGameCenterPrompt = true
+        }
+    }
+
+    /// Kicks off Game Center auth and watches for completion. On success
+    /// within a reasonable window, opens the matchmaker for the intent the
+    /// user originally tapped. On timeout / decline, drops the pending
+    /// intent so a stale auth flip later doesn't pop the matchmaker out
+    /// of nowhere.
+    private func attemptSignInAndProceed() {
+        gameCenter.authenticate()
+        Task { @MainActor in
+            // Poll briefly while GameKit's auth UI is in front of the user.
+            // 30s gives plenty of headroom for the system sheet, the user
+            // typing a password, or a slow network handshake.
+            for _ in 0..<60 {
+                try? await Task.sleep(for: .milliseconds(500))
+                if gameCenter.isAuthenticated, let intent = pendingVersusIntent {
+                    pendingVersusIntent = nil
+                    versusFlow = .matchmaker(.intent(intent))
+                    return
+                }
+            }
+            // Window elapsed without auth — drop the pending intent so
+            // a future successful auth (e.g., user signs in via Settings
+            // an hour later) doesn't surprise-launch the matchmaker.
+            pendingVersusIntent = nil
+        }
     }
 
     private func startMode(_ mode: GameMode) {
@@ -165,4 +219,5 @@ private enum VersusFlow: Identifiable {
 
 #Preview {
     PlayCoordinator()
+        .environment(GameCenterService())
 }

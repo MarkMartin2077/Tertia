@@ -485,7 +485,7 @@ struct GameView: View {
                     onExit()
                 }
             )
-            .presentationDetents([.medium, .large])
+            .presentationDetents([.large])
         } else {
             GameOverSheet(
                 mode: mode,
@@ -507,7 +507,7 @@ struct GameView: View {
                     onExit()
                 }
             )
-            .presentationDetents([.medium, .large])
+            .presentationDetents([.large])
         }
     }
 

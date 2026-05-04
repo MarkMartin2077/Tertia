@@ -32,7 +32,10 @@ struct GameOverSheet: View {
             VStack(spacing: 8) {
                 Text(title)
                     .font(.largeTitle.bold())
-                Text("^[You found \(score) trio](inflect: true)")
+                // Inflected on the trio count, not the multiplier-weighted
+                // score, so the subtitle stays accurate when combos make
+                // `score` larger than the number of trios claimed.
+                Text("^[You found \(totalTriosFound) trio](inflect: true)")
                     .font(.title3)
                     .foregroundStyle(.secondary)
 
@@ -112,7 +115,7 @@ struct GameOverSheet: View {
     }
 
     private var announcement: String {
-        var base = "\(title) " + String(localized: "^[You found \(score) trio](inflect: true).")
+        var base = "\(title) " + String(localized: "^[You found \(totalTriosFound) trio](inflect: true).")
         if mode == .timeAttack, isNewBest {
             base += " New personal best."
         }
@@ -207,8 +210,11 @@ struct GameOverSheet: View {
 
 /// Renders one of three states:
 /// - nil: hidden (used for timer-driven endings)
-/// - 0: "Perfect clear" celebration
-/// - >0: "N cards stranded with no valid trio"
+/// - 0: "Perfect clear" celebration (green, with seal)
+/// - >0: "N cards stranded" status pill (subtle tray icon, info coloring)
+///
+/// Both states use the same Label structure + capsule background so they
+/// visually rhyme — only the tone (celebratory vs informational) differs.
 struct DeckClearedLine: View {
     let strandedCardCount: Int?
 
@@ -217,15 +223,29 @@ struct DeckClearedLine: View {
         if let stranded = strandedCardCount {
             if stranded == 0 {
                 Label("Perfect clear — every card found a trio.", systemImage: "checkmark.seal.fill")
-                    .font(.subheadline.weight(.medium))
+                    .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.green)
                     .multilineTextAlignment(.center)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(.green.opacity(0.12), in: .capsule)
+                    .overlay {
+                        Capsule()
+                            .strokeBorder(Color.green.opacity(0.3), lineWidth: 1)
+                    }
             } else {
-                Text("^[Cleared the deck — \(stranded) card stranded](inflect: true) with no valid trio.")
-                    .font(.subheadline)
+                let cardWord = stranded == 1 ? "card" : "cards"
+                Label("\(stranded) \(cardWord) stranded with no valid trio.", systemImage: "tray.fill")
+                    .font(.subheadline.weight(.medium))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
-                    .padding(.horizontal, 8)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(.background.secondary, in: .capsule)
+                    .overlay {
+                        Capsule()
+                            .strokeBorder(Color.secondary.opacity(0.18), lineWidth: 1)
+                    }
             }
         }
     }

@@ -120,9 +120,10 @@ struct ModeSelectView: View {
         let formatter = DateFormatter()
         formatter.dateFormat = "MMM d"
         let date = formatter.string(from: record.day)
+        let trioWord = record.score == 1 ? "trio" : "trios"
         var lines = [
             "🟪 Tertia Daily — \(date)",
-            "🎯 " + String(localized: "^[\(record.score) trio](inflect: true)")
+            "🎯 \(record.score) \(trioWord)"
         ]
         let streak = dailyStore.displayedStreak
         if streak > 1 {
