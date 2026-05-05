@@ -1,0 +1,1 @@
+- [Tertia project context](project_tertia.md) — @Observable Set card game, GameMode-driven, nonisolated models, Swift Testing unit tests
