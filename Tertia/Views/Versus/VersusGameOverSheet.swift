@@ -96,6 +96,8 @@ struct VersusGameOverSheet: View {
         case .loss: return "You lost"
         case .draw: return "Draw"
         case .forfeit: return "Match ended"
+        case .coopCompleted: return "Run complete"
+        case .coopAbandoned: return "Run abandoned"
         case .none: return "Match complete"
         }
     }
@@ -117,6 +119,10 @@ struct VersusGameOverSheet: View {
             return "Tied with \(game.remoteDisplayName)."
         case .forfeit:
             return "\(game.remoteDisplayName) takes the win."
+        case .coopCompleted:
+            return "Cleared the deck with \(game.remoteDisplayName)."
+        case .coopAbandoned:
+            return "\(game.remoteDisplayName) left the run."
         case .none:
             return ""
         }
@@ -135,28 +141,33 @@ struct VersusGameOverSheet: View {
     /// different on win vs loss vs forfeit, not just the words to differ.
     private var headlineTint: Color {
         switch game.outcome {
-        case .win: return GameMode.versus.accentColor
+        case .win: return game.variant.accent
         case .loss: return .secondary
         case .draw: return .primary
         case .forfeit: return .secondary
+        case .coopCompleted: return game.variant.accent
+        case .coopAbandoned: return .secondary
         case .none: return .primary
         }
     }
 
     /// Local column wears the accent on win/draw; on loss/forfeit the accent
     /// shifts to the remote column so the visual energy points at whoever
-    /// actually came out ahead.
+    /// actually came out ahead. Coop runs share the accent across both
+    /// columns since there's no winner.
     private var localColumnTint: Color {
         switch game.outcome {
-        case .win, .draw: return GameMode.versus.accentColor
-        case .loss, .forfeit, .none: return .secondary
+        case .win, .draw: return game.variant.accent
+        case .coopCompleted: return game.variant.accent
+        case .loss, .forfeit, .coopAbandoned, .none: return .secondary
         }
     }
 
     private var remoteColumnTint: Color {
         switch game.outcome {
-        case .loss, .forfeit: return GameMode.versus.accentColor
-        case .win, .draw, .none: return .secondary
+        case .loss, .forfeit: return game.variant.accent
+        case .coopCompleted: return game.variant.accent
+        case .win, .draw, .coopAbandoned, .none: return .secondary
         }
     }
 
@@ -165,6 +176,8 @@ struct VersusGameOverSheet: View {
         case .win: feedback.personalBest()
         case .loss, .forfeit: feedback.timerExpired()
         case .draw: feedback.timerWarning()
+        case .coopCompleted: feedback.personalBest()
+        case .coopAbandoned: feedback.timerExpired()
         case .none: break
         }
     }
@@ -287,6 +300,7 @@ private struct RematchActionArea: View {
             if !game.isSessionConnected, game.rematchState != .agreed {
                 ConnectionLostActions(
                     opponentName: game.remoteDisplayName,
+                    accent: game.variant.accent,
                     onFindNewMatch: onFindNewMatch,
                     onDone: onDone
                 )
@@ -308,6 +322,7 @@ private struct RematchActionArea: View {
                 case .opponentDeclined:
                     DeclinedActions(
                         opponentName: game.remoteDisplayName,
+                        accent: game.variant.accent,
                         onFindNewMatch: onFindNewMatch,
                         onDone: onDone
                     )
@@ -322,6 +337,7 @@ private struct RematchActionArea: View {
 
 private struct ConnectionLostActions: View {
     let opponentName: String
+    let accent: Color
     let onFindNewMatch: () -> Void
     let onDone: () -> Void
 
@@ -340,7 +356,7 @@ private struct ConnectionLostActions: View {
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
-            .tint(GameMode.versus.accentColor)
+            .tint(accent)
 
             Button(action: onDone) {
                 Text("Done")
@@ -366,7 +382,7 @@ private struct IdleActions: View {
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
-            .tint(GameMode.versus.accentColor)
+            .tint(game.variant.accent)
 
             Button(action: {
                 Task { await game.declineRematch() }
@@ -421,7 +437,7 @@ private struct OpponentReadyActions: View {
                 Text("\(game.remoteDisplayName) is ready to go again.")
                     .font(.subheadline.weight(.medium))
             }
-            .foregroundStyle(GameMode.versus.accentColor)
+            .foregroundStyle(game.variant.accent)
 
             Button {
                 Task { await game.requestRematch() }
@@ -433,7 +449,7 @@ private struct OpponentReadyActions: View {
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
-            .tint(GameMode.versus.accentColor)
+            .tint(game.variant.accent)
 
             Button(action: {
                 Task { await game.declineRematch() }
@@ -450,6 +466,7 @@ private struct OpponentReadyActions: View {
 
 private struct DeclinedActions: View {
     let opponentName: String
+    let accent: Color
     let onFindNewMatch: () -> Void
     let onDone: () -> Void
 
@@ -465,7 +482,7 @@ private struct DeclinedActions: View {
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
-            .tint(GameMode.versus.accentColor)
+            .tint(accent)
 
             Button(action: onDone) {
                 Text("Done")

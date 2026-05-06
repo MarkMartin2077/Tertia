@@ -23,6 +23,9 @@ struct VersusMatchRecord: Codable, Identifiable, Equatable {
     let yourTrios: Int
     let opponentTrios: Int
     let outcome: VersusOutcome
+    /// Which versus variant this match used. Pre-Phase 4 records (saved
+    /// before this field existed) decode as `.normal` — see init(from:).
+    let variant: VersusVariant
 
     init(
         date: Date = .now,
@@ -32,6 +35,7 @@ struct VersusMatchRecord: Codable, Identifiable, Equatable {
         yourTrios: Int,
         opponentTrios: Int,
         outcome: VersusOutcome,
+        variant: VersusVariant = .normal,
         id: UUID = UUID()
     ) {
         self.id = id
@@ -42,6 +46,28 @@ struct VersusMatchRecord: Codable, Identifiable, Equatable {
         self.yourTrios = yourTrios
         self.opponentTrios = opponentTrios
         self.outcome = outcome
+        self.variant = variant
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, date, opponentDisplayName, yourScore, opponentScore
+        case yourTrios, opponentTrios, outcome, variant
+    }
+
+    /// Custom decode so persisted records from before Phase 4 (no
+    /// `variant` field) load as `.normal` rather than failing the entire
+    /// `[VersusMatchRecord]` decode and wiping history.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try container.decode(UUID.self, forKey: .id)
+        self.date = try container.decode(Date.self, forKey: .date)
+        self.opponentDisplayName = try container.decodeIfPresent(String.self, forKey: .opponentDisplayName)
+        self.yourScore = try container.decode(Int.self, forKey: .yourScore)
+        self.opponentScore = try container.decode(Int.self, forKey: .opponentScore)
+        self.yourTrios = try container.decode(Int.self, forKey: .yourTrios)
+        self.opponentTrios = try container.decode(Int.self, forKey: .opponentTrios)
+        self.outcome = try container.decode(VersusOutcome.self, forKey: .outcome)
+        self.variant = try container.decodeIfPresent(VersusVariant.self, forKey: .variant) ?? .normal
     }
 }
 
@@ -89,6 +115,44 @@ final class VersusStore {
         return Double(winCount) / Double(completed)
     }
 
+    // MARK: - Per-variant counts
+
+    /// Records filtered by variant — caller can then slice further.
+    /// Pre-Phase 4 records (no variant field) decode as `.normal`, so
+    /// historic Versus matches surface in the Normal bucket as expected.
+    func matches(in variant: VersusVariant) -> [VersusMatchRecord] {
+        matches.filter { $0.variant == variant }
+    }
+
+    func winCount(in variant: VersusVariant) -> Int {
+        matches.lazy.filter { $0.variant == variant && $0.outcome == .win }.count
+    }
+
+    func lossCount(in variant: VersusVariant) -> Int {
+        matches.lazy.filter { $0.variant == variant && $0.outcome == .loss }.count
+    }
+
+    func forfeitCount(in variant: VersusVariant) -> Int {
+        matches.lazy.filter { $0.variant == variant && $0.outcome == .forfeit }.count
+    }
+
+    func drawCount(in variant: VersusVariant) -> Int {
+        matches.lazy.filter { $0.variant == variant && $0.outcome == .draw }.count
+    }
+
+    /// Coop runs that finished cleanly. Used by the picker's coop tile
+    /// stat blurb and by the Stats screen's coop summary.
+    var coopCompletedCount: Int {
+        matches.lazy.filter { $0.outcome == .coopCompleted }.count
+    }
+
+    /// Coop runs that ended due to disconnect/forfeit. Surfaced separately
+    /// from completed runs so the player can see "completed vs abandoned"
+    /// without having to read between the lines on a single number.
+    var coopAbandonedCount: Int {
+        matches.lazy.filter { $0.outcome == .coopAbandoned }.count
+    }
+
     /// Series record vs a specific opponent, matched by GameKit display name.
     /// Returns wins (you beat them or they forfeited) and losses (they beat
     /// you or you forfeited). Draws are excluded — head-to-head is meant to
@@ -107,6 +171,7 @@ final class VersusStore {
             case .win: wins += 1
             case .loss, .forfeit: losses += 1
             case .draw: break
+            case .coopCompleted, .coopAbandoned: break
             }
         }
         return (wins, losses)

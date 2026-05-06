@@ -92,6 +92,9 @@ final class VersusBestsStore {
         case .draw:
             // Draws preserve the streak (you didn't lose) but don't extend it.
             break
+        case .coopCompleted, .coopAbandoned:
+            // Coop runs sit outside the competitive win-streak ledger.
+            break
         }
 
         bests = updated

@@ -91,7 +91,13 @@ enum VersusMessage: Codable, Equatable, Sendable {
     /// `accepted: false` aborts before any deck is seeded. Lets players
     /// double-confirm after GameKit's matchmaker hands them an opponent —
     /// the popup is the "last chance to back out" before the game starts.
-    case matchConfirmation(by: VersusPlayerID, accepted: Bool)
+    ///
+    /// `variant` is the sender's selected versus variant. With GameKit's
+    /// `playerGroup` gating, peers should already agree, but echoing it
+    /// here lets the StubMatchTransport test path verify and gives a
+    /// belt-and-suspenders fallback for misconfigured clients — a peer
+    /// receiving a mismatched variant declines the match.
+    case matchConfirmation(by: VersusPlayerID, accepted: Bool, variant: VersusVariant)
 
     /// Either peer → both: this player has forfeited. Recipient ends the
     /// match and records a forfeit in their VersusStore.

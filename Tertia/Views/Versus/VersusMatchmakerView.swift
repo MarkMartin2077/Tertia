@@ -43,6 +43,10 @@ enum VersusMatchmakerSource {
 
 struct VersusMatchmakerView: UIViewControllerRepresentable {
     let source: VersusMatchmakerSource
+    /// The variant the local player picked. Maps to `GKMatchRequest.playerGroup`
+    /// so GameKit auto-matches only peers in the same variant pool. Ignored
+    /// for `acceptedInvite` (the invite already negotiated who's playing).
+    let variant: VersusVariant
     let onMatch: (GKMatch) -> Void
     let onCancel: () -> Void
     let onError: (Error) -> Void
@@ -52,11 +56,13 @@ struct VersusMatchmakerView: UIViewControllerRepresentable {
     /// `.intent(...)` wrapping.
     init(
         intent: VersusMatchIntent,
+        variant: VersusVariant = .normal,
         onMatch: @escaping (GKMatch) -> Void,
         onCancel: @escaping () -> Void,
         onError: @escaping (Error) -> Void
     ) {
         self.source = .intent(intent)
+        self.variant = variant
         self.onMatch = onMatch
         self.onCancel = onCancel
         self.onError = onError
@@ -64,11 +70,13 @@ struct VersusMatchmakerView: UIViewControllerRepresentable {
 
     init(
         source: VersusMatchmakerSource,
+        variant: VersusVariant = .normal,
         onMatch: @escaping (GKMatch) -> Void,
         onCancel: @escaping () -> Void,
         onError: @escaping (Error) -> Void
     ) {
         self.source = source
+        self.variant = variant
         self.onMatch = onMatch
         self.onCancel = onCancel
         self.onError = onError
@@ -81,6 +89,9 @@ struct VersusMatchmakerView: UIViewControllerRepresentable {
             let request = GKMatchRequest()
             request.minPlayers = 2
             request.maxPlayers = 2
+            // Variant pool gating — only peers who selected the same variant
+            // share a playerGroup, so auto-match never crosses modes.
+            request.playerGroup = variant.playerGroup
             if intent == .inviteFriend {
                 request.inviteMessage = "Race me on Tertia"
             }
@@ -90,7 +101,8 @@ struct VersusMatchmakerView: UIViewControllerRepresentable {
         case .acceptedInvite(let invite):
             // Invite-driven path: GameKit already negotiated the players;
             // the matchmaker UI just shows the connecting state until the
-            // GKMatch is ready.
+            // GKMatch is ready. Variant is whatever the inviter selected;
+            // the matchConfirmation handshake (Phase 1) verifies it.
             viewController = GKMatchmakerViewController(invite: invite)
         }
 

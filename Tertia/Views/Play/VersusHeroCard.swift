@@ -10,24 +10,21 @@
 import SwiftUI
 
 struct VersusHeroCard: View {
-    /// Pulled from VersusStore in later phases. Phase 1 just shows zeros so
-    /// the layout reads correctly without coupling to a store that doesn't
-    /// exist yet.
+    /// Aggregate wins / losses across all variants. The per-variant
+    /// breakdown lives inside `VersusModeSelectView`, surfaced once the
+    /// user opens the picker.
     let wins: Int
     let losses: Int
-    let onQuickMatch: () -> Void
-    let onInviteFriend: () -> Void
+    let onChooseMode: () -> Void
 
     init(
         wins: Int = 0,
         losses: Int = 0,
-        onQuickMatch: @escaping () -> Void,
-        onInviteFriend: @escaping () -> Void
+        onChooseMode: @escaping () -> Void
     ) {
         self.wins = wins
         self.losses = losses
-        self.onQuickMatch = onQuickMatch
-        self.onInviteFriend = onInviteFriend
+        self.onChooseMode = onChooseMode
     }
 
     var body: some View {
@@ -55,23 +52,19 @@ struct VersusHeroCard: View {
 
             VersusSubtitle(wins: wins, losses: losses)
 
-            VStack(spacing: 10) {
-                Button(action: onQuickMatch) {
-                    Label("Quick Match", systemImage: "bolt.fill")
-                        .frame(maxWidth: .infinity)
+            Button(action: onChooseMode) {
+                HStack {
+                    Label("Choose a Mode", systemImage: "rectangle.stack.fill")
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.subheadline.weight(.semibold))
+                        .opacity(0.7)
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .tint(.teal)
-
-                Button(action: onInviteFriend) {
-                    Label("Invite Friend", systemImage: "person.crop.circle.badge.plus")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.large)
-                .tint(.teal)
+                .frame(maxWidth: .infinity)
             }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .tint(.teal)
             .padding(.top, 4)
         }
         .padding(20)
@@ -135,19 +128,11 @@ private struct StatBlock: View {
 }
 
 #Preview("First time") {
-    VersusHeroCard(
-        onQuickMatch: {},
-        onInviteFriend: {}
-    )
-    .padding()
+    VersusHeroCard(onChooseMode: {})
+        .padding()
 }
 
 #Preview("With record") {
-    VersusHeroCard(
-        wins: 7,
-        losses: 4,
-        onQuickMatch: {},
-        onInviteFriend: {}
-    )
-    .padding()
+    VersusHeroCard(wins: 7, losses: 4, onChooseMode: {})
+        .padding()
 }

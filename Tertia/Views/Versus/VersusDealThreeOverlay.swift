@@ -11,6 +11,10 @@ import SwiftUI
 
 struct VersusDealThreeOverlay: View {
     let onTap: () -> Void
+    /// Variant accent so the CTA reads as part of the current mode's
+    /// visual identity. Defaults to the Versus mode color so existing
+    /// callers keep working.
+    var accent: Color = GameMode.versus.accentColor
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var pulse = false
@@ -32,8 +36,8 @@ struct VersusDealThreeOverlay: View {
             .foregroundStyle(.white)
             .padding(.horizontal, 22)
             .padding(.vertical, 14)
-            .background(GameMode.versus.accentColor.gradient, in: .rect(cornerRadius: 18))
-            .shadow(color: GameMode.versus.accentColor.opacity(0.35), radius: 14, y: 6)
+            .background(accent.gradient, in: .rect(cornerRadius: 18))
+            .shadow(color: accent.opacity(0.35), radius: 14, y: 6)
             .scaleEffect(pulse ? 1.04 : 1.0)
             .animation(
                 reduceMotion

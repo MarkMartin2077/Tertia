@@ -136,12 +136,20 @@ final class StatsViewModel {
     }
 
     /// Most recent N versus matches sorted newest → oldest for the recent
-    /// matches list.
-    func recentVersusMatches(_ n: Int = 10) -> [VersusMatchRecord] {
-        Array(
-            versusStore.matches
+    /// matches list. Pass a variant to filter; nil returns all variants.
+    func recentVersusMatches(_ n: Int = 10, variant: VersusVariant? = nil) -> [VersusMatchRecord] {
+        let pool = variant.map { versusStore.matches(in: $0) } ?? versusStore.matches
+        return Array(
+            pool
                 .sorted(by: { $0.date > $1.date })
                 .prefix(n)
         )
     }
+
+    /// Coop-specific aggregates surfaced in the Coop bucket of the Stats
+    /// Versus section. Kept out of the competitive `versusWins/Losses` so
+    /// the existing W-L tiles aren't double-counted.
+    var coopRunsCompleted: Int { versusStore.coopCompletedCount }
+    var coopRunsAbandoned: Int { versusStore.coopAbandonedCount }
+    var hasCoopHistory: Bool { coopRunsCompleted + coopRunsAbandoned > 0 }
 }

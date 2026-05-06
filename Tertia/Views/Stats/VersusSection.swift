@@ -12,6 +12,10 @@ import SwiftUI
 struct VersusSection: View {
     let viewModel: StatsViewModel
 
+    /// Recent-matches filter. `nil` shows all variants; setting a variant
+    /// filters the list (and the W-L tiles for competitive variants).
+    @State private var recentFilter: VersusVariant? = nil
+
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .firstTextBaseline) {
@@ -27,6 +31,10 @@ struct VersusSection: View {
             }
 
             if viewModel.hasVersusHistory {
+                // Competitive aggregate tiles (Wins/Losses/Forfeits/Draws)
+                // — these only count competitive outcomes regardless of
+                // the recent-list filter. Coop runs are summarized in
+                // their own row below when present.
                 HStack(spacing: 12) {
                     VersusOutcomeTile(
                         value: viewModel.versusWins,
@@ -50,10 +58,85 @@ struct VersusSection: View {
                     )
                 }
 
-                RecentVersusMatchesList(matches: viewModel.recentVersusMatches(8))
+                if viewModel.hasCoopHistory {
+                    CoopRunsSummary(
+                        completed: viewModel.coopRunsCompleted,
+                        abandoned: viewModel.coopRunsAbandoned
+                    )
+                }
+
+                VariantFilterPicker(selection: $recentFilter)
+
+                RecentVersusMatchesList(matches: viewModel.recentVersusMatches(8, variant: recentFilter))
             } else {
                 VersusEmptyState()
             }
+        }
+    }
+}
+
+/// Segmented control above the recent-matches list. `All` is the default;
+/// the variant-specific buckets only appear if the user has at least one
+/// match recorded for that variant — keeps the picker from showing four
+/// empty buckets on day one.
+private struct VariantFilterPicker: View {
+    @Binding var selection: VersusVariant?
+
+    var body: some View {
+        Picker("Filter", selection: $selection) {
+            Text("All").tag(VersusVariant?.none)
+            ForEach(VersusVariant.allCases, id: \.self) { variant in
+                Text(variant.shortName).tag(VersusVariant?.some(variant))
+            }
+        }
+        .pickerStyle(.segmented)
+    }
+}
+
+/// Compact summary tile for coop runs. Lives in its own row so the
+/// competitive tiles above don't have to grow a fifth column.
+private struct CoopRunsSummary: View {
+    let completed: Int
+    let abandoned: Int
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "person.2.fill")
+                .foregroundStyle(.teal)
+                .imageScale(.small)
+            Text("Co-op")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.teal)
+            Spacer()
+            HStack(spacing: 14) {
+                CoopStatBlock(value: completed, label: "completed")
+                CoopStatBlock(value: abandoned, label: "abandoned", tint: .secondary)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(Color.teal.opacity(0.08), in: .rect(cornerRadius: 12))
+        .overlay {
+            RoundedRectangle(cornerRadius: 12)
+                .strokeBorder(Color.teal.opacity(0.25), lineWidth: 1)
+        }
+    }
+}
+
+private struct CoopStatBlock: View {
+    let value: Int
+    let label: String
+    var tint: Color = .primary
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Text("\(value)")
+                .font(.subheadline.bold())
+                .monospacedDigit()
+                .foregroundStyle(tint)
+            Text(label)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
         }
     }
 }
@@ -173,6 +256,8 @@ private struct VersusMatchRow: View {
         case .loss: return "loss"
         case .forfeit: return "forfeit"
         case .draw: return "draw"
+        case .coopCompleted: return "co-op completed"
+        case .coopAbandoned: return "co-op abandoned"
         }
     }
 }
@@ -195,6 +280,8 @@ private struct VersusOutcomeBadge: View {
         case .loss: return "L"
         case .forfeit: return "F"
         case .draw: return "D"
+        case .coopCompleted: return "C"
+        case .coopAbandoned: return "—"
         }
     }
 
@@ -204,6 +291,8 @@ private struct VersusOutcomeBadge: View {
         case .loss: return .red
         case .forfeit: return .orange
         case .draw: return .gray
+        case .coopCompleted: return .teal
+        case .coopAbandoned: return .gray
         }
     }
 }

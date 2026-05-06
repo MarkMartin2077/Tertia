@@ -17,10 +17,15 @@ struct PlayCoordinator: View {
     @State private var versusFlow: VersusFlow?
     @State private var matchmakingError: String?
     /// Set when the user taps Versus while signed out of Game Center.
-    /// Drives the sign-in prompt; once GC auth succeeds, the matchmaker
-    /// opens automatically for this intent.
+    /// Drives the sign-in prompt; once GC auth succeeds, the mode-select
+    /// sheet opens automatically. Holds the intent the user originally
+    /// kicked off with so we resume the correct flow post-auth.
     @State private var pendingVersusIntent: VersusMatchIntent?
     @State private var showGameCenterPrompt = false
+    /// Drives the bottom-sheet variant picker pushed off the hero card.
+    /// User picks variant + intent inside the sheet; on confirm, the sheet
+    /// dismisses and the matchmaker fullScreenCover takes over.
+    @State private var showModeSelect = false
 
     init(
         requestedMode: Binding<GameMode?> = .constant(nil),
@@ -34,17 +39,18 @@ struct PlayCoordinator: View {
         ModeSelectView(
             lastPlayed: GameMode(rawValue: lastGameModeRaw),
             onSelect: { mode in startMode(mode) },
-            onVersus: { intent in startVersus(intent: intent) }
+            onVersus: { openVersusModeSelect() }
         )
         .fullScreenCover(item: $activeMode) { mode in
             GameView(mode: mode, onExit: { activeMode = nil })
         }
         .fullScreenCover(item: $versusFlow) { flow in
             switch flow {
-            case .matchmaker(let source):
+            case .matchmaker(let source, let variant):
                 VersusMatchmakerView(
                     source: source,
-                    onMatch: { match in handleMatchFound(match) },
+                    variant: variant,
+                    onMatch: { match in handleMatchFound(match, variant: variant) },
                     onCancel: { versusFlow = nil },
                     onError: { error in handleMatchmakingError(error) }
                 )
@@ -57,10 +63,22 @@ struct PlayCoordinator: View {
                         // Replace the current game with a fresh matchmaker
                         // pass on the same cover — single fullScreenCover
                         // handles the handoff without dismiss/present races.
-                        versusFlow = .matchmaker(.intent(.quickMatch))
+                        // Reuse the just-finished match's variant so "Find
+                        // New Match" doesn't silently drop you back to Normal.
+                        versusFlow = .matchmaker(.intent(.quickMatch), game.variant)
                     }
                 )
             }
+        }
+        .sheet(isPresented: $showModeSelect) {
+            VersusModeSelectView(
+                onStart: { variant, intent in
+                    showModeSelect = false
+                    startVersus(intent: intent, variant: variant)
+                },
+                onCancel: { showModeSelect = false }
+            )
+            .presentationDetents([.medium, .large])
         }
         .alert(
             "Couldn't find a match",
@@ -111,17 +129,38 @@ struct PlayCoordinator: View {
     /// invite-driven matchmaker. Called when the user accepts a GameKit
     /// invite from Messages — by that point any prior game/match cover is
     /// stale.
+    ///
+    /// Inbound invites default to `.normal` because the invite payload
+    /// itself doesn't carry the inviter's variant. If the inviter chose
+    /// a non-Normal variant, the matchConfirmation handshake (Phase 1)
+    /// will surface a mismatch and decline the match cleanly. Phase 2
+    /// limitation; revisit when invite metadata grows a variant field.
     private func acceptInvite(_ pending: PendingMatchInvite) {
-        versusFlow = .matchmaker(.acceptedInvite(pending.invite))
+        versusFlow = .matchmaker(.acceptedInvite(pending.invite), .normal)
+    }
+
+    /// Surfaces the variant picker sheet. Gates on Game Center auth — if
+    /// the user isn't signed in, surface the sign-in prompt first; once
+    /// auth completes the sheet opens automatically.
+    private func openVersusModeSelect() {
+        if gameCenter.isAuthenticated {
+            showModeSelect = true
+        } else {
+            // No specific intent yet — quickMatch is the natural default
+            // post-sign-in. The user can still pick a different variant or
+            // tap Invite Friend once the sheet is open.
+            pendingVersusIntent = .quickMatch
+            showGameCenterPrompt = true
+        }
     }
 
     /// Either opens the matchmaker immediately (if Game Center is already
     /// signed in) or stages an inline sign-in prompt and resumes once auth
     /// succeeds. Avoids forcing a sign-in wall at app launch — users only
     /// see the GC ask when they actually try to play Versus.
-    private func startVersus(intent: VersusMatchIntent) {
+    private func startVersus(intent: VersusMatchIntent, variant: VersusVariant) {
         if gameCenter.isAuthenticated {
-            versusFlow = .matchmaker(.intent(intent))
+            versusFlow = .matchmaker(.intent(intent), variant)
         } else {
             pendingVersusIntent = intent
             showGameCenterPrompt = true
@@ -141,9 +180,11 @@ struct PlayCoordinator: View {
             // typing a password, or a slow network handshake.
             for _ in 0..<60 {
                 try? await Task.sleep(for: .milliseconds(500))
-                if gameCenter.isAuthenticated, let intent = pendingVersusIntent {
+                if gameCenter.isAuthenticated, pendingVersusIntent != nil {
                     pendingVersusIntent = nil
-                    versusFlow = .matchmaker(.intent(intent))
+                    // Variant gets picked inside the sheet. Open the picker
+                    // rather than going straight to matchmaker.
+                    showModeSelect = true
                     return
                 }
             }
@@ -170,7 +211,7 @@ struct PlayCoordinator: View {
     /// `.matchmaker` to `.game` worked for Quick Match but broke the
     /// post-accept flow for Invite Friend, presumably because GameKit's
     /// invite-only state machine takes longer to clean up.
-    private func handleMatchFound(_ match: GKMatch) {
+    private func handleMatchFound(_ match: GKMatch, variant: VersusVariant) {
         let transport = GKMatchTransport(match: match)
         let session = MatchSession(transport: transport)
         session.start()
@@ -179,6 +220,7 @@ struct PlayCoordinator: View {
         let remote = match.players.first
         let game = VersusGame(
             session: session,
+            variant: variant,
             localDisplayName: local.displayName,
             remoteDisplayName: remote?.displayName ?? "Opponent"
         )
@@ -200,16 +242,20 @@ struct PlayCoordinator: View {
 /// and active game as cases of the same enum lets SwiftUI swap content in
 /// place — no dismiss/present race when transitioning from "match found"
 /// to gameplay or from "find a new match" back to matchmaker.
+///
+/// `matchmaker` carries the chosen variant so it can be stamped onto
+/// `GKMatchRequest.playerGroup` and onto the `VersusGame` once a match is
+/// found.
 private enum VersusFlow: Identifiable {
-    case matchmaker(VersusMatchmakerSource)
+    case matchmaker(VersusMatchmakerSource, VersusVariant)
     case game(VersusGame)
 
     var id: String {
         switch self {
-        case .matchmaker(let source):
+        case .matchmaker(let source, let variant):
             switch source {
-            case .intent(let intent): return "matchmaker-intent-\(intent.rawValue)"
-            case .acceptedInvite(let invite): return "matchmaker-invite-\(ObjectIdentifier(invite))"
+            case .intent(let intent): return "matchmaker-intent-\(intent.rawValue)-\(variant.rawValue)"
+            case .acceptedInvite(let invite): return "matchmaker-invite-\(ObjectIdentifier(invite))-\(variant.rawValue)"
             }
         case .game(let game):
             return "game-\(game.id.uuidString)"

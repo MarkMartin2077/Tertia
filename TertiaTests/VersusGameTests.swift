@@ -590,4 +590,278 @@ struct VersusGameTests {
         #expect(pair.hostGame.guestTrios == 1)
         #expect(pair.guestGame.guestTrios == 1)
     }
+
+    // MARK: - Variant (Phase 1)
+
+    @Test("VersusGame defaults to .normal variant when none specified")
+    func variantDefaultsToNormal() async {
+        let pair = makePair()
+        #expect(pair.hostGame.variant == .normal)
+        #expect(pair.guestGame.variant == .normal)
+    }
+
+    @Test("Explicit variant is stored on both peers")
+    func variantStoredWhenProvided() async {
+        let hostTransport = StubMatchTransport(localPlayerID: "P-1", remotePlayerID: "P-2")
+        let guestTransport = StubMatchTransport(localPlayerID: "P-2", remotePlayerID: "P-1")
+        hostTransport.peer = guestTransport
+        guestTransport.peer = hostTransport
+        let hostSession = MatchSession(transport: hostTransport, timings: Self.timings)
+        let guestSession = MatchSession(transport: guestTransport, timings: Self.timings)
+        hostSession.start()
+        guestSession.start()
+
+        let hostGame = VersusGame(session: hostSession, variant: .firstTo10)
+        let guestGame = VersusGame(session: guestSession, variant: .firstTo10)
+        #expect(hostGame.variant == .firstTo10)
+        #expect(guestGame.variant == .firstTo10)
+    }
+
+    @Test("Matching variants on both peers transition to .playing")
+    func matchingVariantsAcceptedNormally() async throws {
+        let hostTransport = StubMatchTransport(localPlayerID: "P-1", remotePlayerID: "P-2")
+        let guestTransport = StubMatchTransport(localPlayerID: "P-2", remotePlayerID: "P-1")
+        hostTransport.peer = guestTransport
+        guestTransport.peer = hostTransport
+        let hostSession = MatchSession(transport: hostTransport, timings: Self.timings)
+        let guestSession = MatchSession(transport: guestTransport, timings: Self.timings)
+        hostSession.start()
+        guestSession.start()
+
+        let hostGame = VersusGame(session: hostSession, variant: .coop)
+        let guestGame = VersusGame(session: guestSession, variant: .coop)
+        await hostGame.start()
+        await guestGame.start()
+        try await tick()
+        await hostGame.acceptMatch()
+        await guestGame.acceptMatch()
+        try await tick()
+
+        #expect(hostGame.phase == .playing)
+        #expect(guestGame.phase == .playing)
+    }
+
+    // MARK: - First-to-10 (Phase 3)
+
+    @Test("First-to-N ends the match when host crosses the threshold")
+    func firstToNHostWinsAtThreshold() async throws {
+        let hostTransport = StubMatchTransport(localPlayerID: "P-1", remotePlayerID: "P-2")
+        let guestTransport = StubMatchTransport(localPlayerID: "P-2", remotePlayerID: "P-1")
+        hostTransport.peer = guestTransport
+        guestTransport.peer = hostTransport
+        let hostSession = MatchSession(transport: hostTransport, timings: Self.timings)
+        let guestSession = MatchSession(transport: guestTransport, timings: Self.timings)
+        hostSession.start()
+        guestSession.start()
+
+        // Use a 2-trio threshold so we can exercise the end condition with
+        // two valid claims rather than ten — same code path, faster test.
+        let hostGame = VersusGame(
+            session: hostSession,
+            variant: .firstTo10,
+            lockoutDuration: 2.0,
+            trioWinThresholdOverride: 2
+        )
+        let guestGame = VersusGame(
+            session: guestSession,
+            variant: .firstTo10,
+            lockoutDuration: 2.0,
+            trioWinThresholdOverride: 2
+        )
+        await hostGame.start()
+        await guestGame.start()
+        try await tick()
+        await hostGame.acceptMatch()
+        await guestGame.acceptMatch()
+        try await tick()
+
+        // Plant a known valid trio; host claims.
+        let trio1 = [
+            SetCard(shape: .circle, count: .one, color: .red, fill: .filled),
+            SetCard(shape: .square, count: .two, color: .green, fill: .empty),
+            SetCard(shape: .triangle, count: .three, color: .blue, fill: .rightHalf)
+        ]
+        for (i, card) in trio1.enumerated() {
+            hostGame.setGame.boardSlots[i] = card
+            guestGame.setGame.boardSlots[i] = card
+        }
+        for card in trio1 {
+            await hostGame.toggleSelection(card)
+        }
+        try await tick()
+
+        // After one claim, host has 1 trio — below threshold, match still on.
+        #expect(hostGame.hostTrios == 1)
+        #expect(hostGame.outcome == nil)
+
+        // Plant a second valid trio; host claims it to cross the threshold.
+        let trio2 = [
+            SetCard(shape: .circle, count: .two, color: .red, fill: .empty),
+            SetCard(shape: .square, count: .three, color: .green, fill: .rightHalf),
+            SetCard(shape: .triangle, count: .one, color: .blue, fill: .filled)
+        ]
+        for (i, card) in trio2.enumerated() {
+            hostGame.setGame.boardSlots[i] = card
+            guestGame.setGame.boardSlots[i] = card
+        }
+        for card in trio2 {
+            await hostGame.toggleSelection(card)
+        }
+        try await tick()
+
+        #expect(hostGame.hostTrios == 2)
+        #expect(hostGame.outcome == .win)
+        #expect(guestGame.outcome == .loss)
+    }
+
+    @Test("First-to-N is variant-gated — Normal doesn't end mid-deck")
+    func normalIgnoresThresholdEvenAtTenTrios() async throws {
+        let pair = makePair()
+        try await startAndAcceptMatch(pair)
+
+        // Normal variant ignores the threshold override entirely. With one
+        // claim and threshold=1 (which would end firstTo10), the match
+        // must continue.
+        let trio = [
+            SetCard(shape: .circle, count: .one, color: .red, fill: .filled),
+            SetCard(shape: .square, count: .two, color: .green, fill: .empty),
+            SetCard(shape: .triangle, count: .three, color: .blue, fill: .rightHalf)
+        ]
+        for (i, card) in trio.enumerated() {
+            pair.hostGame.setGame.boardSlots[i] = card
+            pair.guestGame.setGame.boardSlots[i] = card
+        }
+        for card in trio {
+            await pair.hostGame.toggleSelection(card)
+        }
+        try await tick()
+
+        #expect(pair.hostGame.hostTrios == 1)
+        // Default makePair uses .normal variant — no threshold check fires.
+        #expect(pair.hostGame.outcome == nil)
+    }
+
+    // MARK: - Coop (Phase 3)
+
+    @Test("Coop forfeit by local maps both peers to .coopAbandoned")
+    func coopForfeitMapsBothToAbandoned() async throws {
+        let pair = coopPair()
+        try await startAndAcceptCoop(pair)
+
+        await pair.guestGame.forfeit()
+        try await tick()
+
+        #expect(pair.guestGame.outcome == .coopAbandoned)
+        // Critical: opponent does NOT see .win — coop has no winner.
+        #expect(pair.hostGame.outcome == .coopAbandoned)
+    }
+
+    @Test("Coop opponent disconnect maps to .coopAbandoned for the surviving peer")
+    func coopOpponentDisconnectIsAbandonment() async throws {
+        let pair = coopPair()
+        try await startAndAcceptCoop(pair)
+
+        // Guest's transport reports the host disconnected.
+        pair.guestTransport.emitEvent(.disconnected("P-1"))
+        try await tick()
+
+        #expect(pair.guestGame.outcome == .coopAbandoned)
+        // Surviving peer doesn't get a win — coop runs end as abandoned
+        // either way so neither side's stats inflate.
+        #expect(pair.guestGame.winSource == nil)
+    }
+
+    @Test("Coop successful claim attributes trios to claimer but counts toward team")
+    func coopClaimContributesToTeam() async throws {
+        let pair = coopPair()
+        try await startAndAcceptCoop(pair)
+
+        let trio = [
+            SetCard(shape: .circle, count: .one, color: .red, fill: .filled),
+            SetCard(shape: .square, count: .two, color: .green, fill: .empty),
+            SetCard(shape: .triangle, count: .three, color: .blue, fill: .rightHalf)
+        ]
+        for (i, card) in trio.enumerated() {
+            pair.hostGame.setGame.boardSlots[i] = card
+            pair.guestGame.setGame.boardSlots[i] = card
+        }
+        for card in trio {
+            await pair.guestGame.toggleSelection(card)
+        }
+        try await tick()
+
+        // Per-player attribution preserved (used for contribution badges).
+        #expect(pair.hostGame.guestTrios == 1)
+        #expect(pair.hostGame.hostTrios == 0)
+        // Team aggregate sums both.
+        #expect(pair.hostGame.teamTrios == 1)
+        #expect(pair.hostGame.teamScore > 0)
+        // No winner in coop — outcome stays nil mid-game.
+        #expect(pair.hostGame.outcome == nil)
+    }
+
+    // MARK: - Coop helpers
+
+    private func coopPair() -> Pair {
+        let hostTransport = StubMatchTransport(localPlayerID: "P-1", remotePlayerID: "P-2")
+        let guestTransport = StubMatchTransport(localPlayerID: "P-2", remotePlayerID: "P-1")
+        hostTransport.peer = guestTransport
+        guestTransport.peer = hostTransport
+        let hostSession = MatchSession(transport: hostTransport, timings: Self.timings)
+        let guestSession = MatchSession(transport: guestTransport, timings: Self.timings)
+        hostSession.start()
+        guestSession.start()
+        let hostGame = VersusGame(session: hostSession, variant: .coop, lockoutDuration: 2.0)
+        let guestGame = VersusGame(session: guestSession, variant: .coop, lockoutDuration: 2.0)
+        return Pair(
+            hostGame: hostGame,
+            guestGame: guestGame,
+            hostTransport: hostTransport,
+            guestTransport: guestTransport
+        )
+    }
+
+    private func startAndAcceptCoop(_ pair: Pair) async throws {
+        await pair.hostGame.start()
+        await pair.guestGame.start()
+        try await tick()
+        await pair.hostGame.acceptMatch()
+        await pair.guestGame.acceptMatch()
+        try await tick()
+    }
+
+    @Test("Mismatched variants short-circuit to decline")
+    func mismatchedVariantsCauseDecline() async throws {
+        // GameKit's playerGroup gating should prevent this, but a
+        // misconfigured client (or test bypass) shouldn't be able to
+        // accidentally play a different variant from its peer.
+        let hostTransport = StubMatchTransport(localPlayerID: "P-1", remotePlayerID: "P-2")
+        let guestTransport = StubMatchTransport(localPlayerID: "P-2", remotePlayerID: "P-1")
+        hostTransport.peer = guestTransport
+        guestTransport.peer = hostTransport
+        let hostSession = MatchSession(transport: hostTransport, timings: Self.timings)
+        let guestSession = MatchSession(transport: guestTransport, timings: Self.timings)
+        hostSession.start()
+        guestSession.start()
+
+        let hostGame = VersusGame(session: hostSession, variant: .normal)
+        let guestGame = VersusGame(session: guestSession, variant: .coop)
+        await hostGame.start()
+        await guestGame.start()
+        try await tick()
+
+        // Both accept — but they disagree on variant.
+        await hostGame.acceptMatch()
+        await guestGame.acceptMatch()
+        try await tick()
+
+        // Mismatch surfaces as a remote decline on both sides; phase ends
+        // with no outcome (nothing to record in stats).
+        #expect(hostGame.phase == .ended)
+        #expect(guestGame.phase == .ended)
+        #expect(hostGame.outcome == nil)
+        #expect(guestGame.outcome == nil)
+        #expect(!hostGame.hasReceivedDeck)
+        #expect(!guestGame.hasReceivedDeck)
+    }
 }

@@ -11,20 +11,40 @@ import SwiftUI
 
 struct MatchConfirmationView: View {
     let opponentName: String
+    let variant: VersusVariant
     let localDecision: MatchConfirmationDecision
     let remoteDecision: MatchConfirmationDecision
     let onAccept: () -> Void
     let onDecline: () -> Void
 
+    /// Convenience initializer that defaults to `.normal` so older preview
+    /// blocks and any not-yet-updated call sites keep working.
+    init(
+        opponentName: String,
+        variant: VersusVariant = .normal,
+        localDecision: MatchConfirmationDecision,
+        remoteDecision: MatchConfirmationDecision,
+        onAccept: @escaping () -> Void,
+        onDecline: @escaping () -> Void
+    ) {
+        self.opponentName = opponentName
+        self.variant = variant
+        self.localDecision = localDecision
+        self.remoteDecision = remoteDecision
+        self.onAccept = onAccept
+        self.onDecline = onDecline
+    }
+
     var body: some View {
         VStack(spacing: 20) {
-            MatchConfirmationHeader(opponentName: opponentName)
+            MatchConfirmationHeader(opponentName: opponentName, variant: variant)
             MatchConfirmationStatusRow(
                 opponentName: opponentName,
                 localDecision: localDecision,
                 remoteDecision: remoteDecision
             )
             MatchConfirmationActions(
+                accent: variant.accent,
                 localDecision: localDecision,
                 onAccept: onAccept,
                 onDecline: onDecline
@@ -44,19 +64,37 @@ struct MatchConfirmationView: View {
 
 private struct MatchConfirmationHeader: View {
     let opponentName: String
+    let variant: VersusVariant
 
     var body: some View {
         VStack(spacing: 10) {
             Image(systemName: "person.2.fill")
                 .font(.system(size: 38, weight: .semibold))
-                .foregroundStyle(GameMode.versus.accentColor)
+                .foregroundStyle(variant.accent)
                 .accessibilityHidden(true)
+            // Variant chip above the title makes the mode unmistakable —
+            // the player's last sanity check before accepting.
+            Text(variant.shortName.uppercased())
+                .font(.caption2.weight(.heavy))
+                .tracking(1.5)
+                .foregroundStyle(variant.accent)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .background(variant.accent.opacity(0.15), in: .capsule)
             Text("Match found")
                 .font(.title2.bold())
-            Text("Race \(opponentName)?")
+            Text(prompt(for: variant))
                 .font(.headline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
+        }
+    }
+
+    private func prompt(for variant: VersusVariant) -> String {
+        switch variant {
+        case .normal:    return "Race \(opponentName)?"
+        case .firstTo10: return "First to 10 with \(opponentName)?"
+        case .coop:      return "Team up with \(opponentName)?"
         }
     }
 }
@@ -131,6 +169,7 @@ private struct MatchConfirmationStatusBadge: View {
 }
 
 private struct MatchConfirmationActions: View {
+    let accent: Color
     let localDecision: MatchConfirmationDecision
     let onAccept: () -> Void
     let onDecline: () -> Void
@@ -144,7 +183,7 @@ private struct MatchConfirmationActions: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
-                .tint(GameMode.versus.accentColor)
+                .tint(accent)
 
                 Button(role: .cancel, action: onDecline) {
                     Text("Decline")

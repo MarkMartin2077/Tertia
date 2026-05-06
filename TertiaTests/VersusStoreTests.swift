@@ -23,7 +23,8 @@ struct VersusStoreTests {
         opponent: String = "Casey",
         you: Int = 20,
         them: Int = 18,
-        date: Date = .now
+        date: Date = .now,
+        variant: VersusVariant = .normal
     ) -> VersusMatchRecord {
         VersusMatchRecord(
             date: date,
@@ -32,7 +33,8 @@ struct VersusStoreTests {
             opponentScore: them,
             yourTrios: you / 2,
             opponentTrios: them / 2,
-            outcome: outcome
+            outcome: outcome,
+            variant: variant
         )
     }
 
@@ -131,5 +133,91 @@ struct VersusStoreTests {
         // Oldest (Opp0) dropped; first survivor is Opp1.
         #expect(store.matches.first?.opponentDisplayName == "Opp1")
         #expect(store.matches.last?.opponentDisplayName == "Opp200")
+    }
+
+    // MARK: - Phase 4: variant filtering & persistence
+
+    @Test("Per-variant counts filter by variant")
+    func perVariantCounts() {
+        let (store, _, _) = makeStore()
+        store.record(match(.win, variant: .normal))
+        store.record(match(.win, variant: .normal))
+        store.record(match(.loss, variant: .normal))
+        store.record(match(.win, variant: .firstTo10))
+        store.record(match(.loss, variant: .firstTo10))
+        store.record(match(.coopCompleted, variant: .coop))
+        store.record(match(.coopAbandoned, variant: .coop))
+
+        #expect(store.winCount(in: .normal) == 2)
+        #expect(store.lossCount(in: .normal) == 1)
+        #expect(store.winCount(in: .firstTo10) == 1)
+        #expect(store.lossCount(in: .firstTo10) == 1)
+        #expect(store.coopCompletedCount == 1)
+        #expect(store.coopAbandonedCount == 1)
+    }
+
+    @Test("Aggregate counts ignore coop outcomes")
+    func aggregateCountsExcludeCoop() {
+        let (store, _, _) = makeStore()
+        store.record(match(.win, variant: .normal))
+        store.record(match(.coopCompleted, variant: .coop))
+        store.record(match(.coopAbandoned, variant: .coop))
+        // Coop runs aren't competitive — winCount only sees the .win record.
+        #expect(store.winCount == 1)
+        #expect(store.lossCount == 0)
+        #expect(store.forfeitCount == 0)
+    }
+
+    @Test("Records persist their variant across store reload")
+    func variantPersistsAcrossReload() {
+        let suiteName = "test-variant-persist-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        defaults.removePersistentDomain(forName: suiteName)
+
+        let store1 = VersusStore(userDefaults: defaults)
+        store1.record(match(.win, variant: .firstTo10))
+        store1.record(match(.coopCompleted, variant: .coop))
+
+        let store2 = VersusStore(userDefaults: defaults)
+        #expect(store2.matches.count == 2)
+        #expect(store2.matches.first?.variant == .firstTo10)
+        #expect(store2.matches.last?.variant == .coop)
+    }
+
+    @Test("Pre-Phase 4 records (no variant field) decode as .normal")
+    func preExistingRecordsMigrateToNormal() throws {
+        // Hand-crafted JSON matching the pre-Phase 4 schema — no variant
+        // key. Decoding shouldn't throw, and the missing field should
+        // resolve to `.normal` so historic versus matches still surface
+        // in the Normal bucket of the picker and stats.
+        let legacyJSON = """
+        [
+          {
+            "id": "00000000-0000-0000-0000-000000000001",
+            "date": 745977600,
+            "opponentDisplayName": "Legacy",
+            "yourScore": 21,
+            "opponentScore": 18,
+            "yourTrios": 7,
+            "opponentTrios": 6,
+            "outcome": "win"
+          }
+        ]
+        """.data(using: .utf8)!
+
+        let suiteName = "test-legacy-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        defaults.set(legacyJSON, forKey: "versus.v1")
+
+        let store = VersusStore(userDefaults: defaults)
+        #expect(store.matches.count == 1)
+        #expect(store.matches.first?.variant == .normal)
+        #expect(store.matches.first?.opponentDisplayName == "Legacy")
+        // And the pre-existing record still counts toward Normal-variant
+        // win count, so the picker's "12-8 W-L" stat doesn't go missing
+        // when a returning user updates the app.
+        #expect(store.winCount(in: .normal) == 1)
     }
 }

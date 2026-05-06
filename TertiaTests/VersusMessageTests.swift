@@ -86,10 +86,12 @@ struct VersusMessageTests {
 
     @Test("matchConfirmation round-trips both accept and decline")
     func matchConfirmationRoundTrips() throws {
-        let accept: VersusMessage = .matchConfirmation(by: "PLAYER-A", accepted: true)
-        let decline: VersusMessage = .matchConfirmation(by: "PLAYER-B", accepted: false)
+        let accept: VersusMessage = .matchConfirmation(by: "PLAYER-A", accepted: true, variant: .normal)
+        let decline: VersusMessage = .matchConfirmation(by: "PLAYER-B", accepted: false, variant: .firstTo10)
+        let coopAccept: VersusMessage = .matchConfirmation(by: "PLAYER-C", accepted: true, variant: .coop)
         #expect(try roundTrip(accept) == accept)
         #expect(try roundTrip(decline) == decline)
+        #expect(try roundTrip(coopAccept) == coopAccept)
     }
 
     @Test("rematchRequest and rematchDecline round-trip")

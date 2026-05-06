@@ -14,7 +14,10 @@ struct ModeSelectView: View {
 
     let lastPlayed: GameMode?
     let onSelect: (GameMode) -> Void
-    let onVersus: (VersusMatchIntent) -> Void
+    /// Fired when the user taps the Versus hero. The coordinator opens
+    /// the variant picker — intent (Quick Match vs Invite Friend) is
+    /// chosen inside that sheet rather than here.
+    let onVersus: () -> Void
 
     var body: some View {
         ScrollView {
@@ -70,8 +73,7 @@ struct ModeSelectView: View {
         VersusHeroCard(
             wins: versusStore.winCount,
             losses: versusStore.lossCount,
-            onQuickMatch: { onVersus(.quickMatch) },
-            onInviteFriend: { onVersus(.inviteFriend) }
+            onChooseMode: onVersus
         )
         .padding(.horizontal, 20)
     }
@@ -202,7 +204,7 @@ private struct ModeCard: View {
     ModeSelectView(
         lastPlayed: .normal,
         onSelect: { mode in print("Selected: \(mode.title)") },
-        onVersus: { intent in print("Versus: \(intent.rawValue)") }
+        onVersus: { print("Versus: open mode picker") }
     )
     .environment(DailyStore())
     .environment(VersusStore())

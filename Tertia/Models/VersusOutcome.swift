@@ -25,4 +25,24 @@ enum VersusOutcome: String, Codable, Equatable, Sendable {
     /// both players disconnected simultaneously. Recorded as the same value
     /// either way — UI / stats can treat them identically.
     case draw
+
+    /// Coop variant only. Both players completed the deck together.
+    /// Recorded with the team's combined trio count rather than a winner.
+    case coopCompleted
+
+    /// Coop variant only. One player left mid-match, so the run can't be
+    /// recorded as completed. Surfaced to both peers so neither's stats
+    /// inflate.
+    case coopAbandoned
+}
+
+extension VersusOutcome {
+    /// Whether this outcome belongs to a coop run. Lets UI and stats split
+    /// "competitive history" from "coop history" cleanly.
+    var isCoop: Bool {
+        switch self {
+        case .coopCompleted, .coopAbandoned: return true
+        case .win, .loss, .forfeit, .draw:   return false
+        }
+    }
 }

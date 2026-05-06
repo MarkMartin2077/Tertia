@@ -72,6 +72,7 @@ struct VersusGameView: View {
                     if game.phase == .awaitingConfirmation {
                         MatchConfirmationView(
                             opponentName: game.remoteDisplayName,
+                            variant: game.variant,
                             localDecision: game.localConfirmation,
                             remoteDecision: game.remoteConfirmation,
                             onAccept: { Task { await game.acceptMatch() } },
@@ -80,9 +81,10 @@ struct VersusGameView: View {
                         .padding(.horizontal, 24)
                         .transition(.opacity.combined(with: .scale(scale: 0.96)))
                     } else if shouldShowDealThreeOverlay {
-                        VersusDealThreeOverlay {
-                            Task { await game.requestDealThree() }
-                        }
+                        VersusDealThreeOverlay(
+                            onTap: { Task { await game.requestDealThree() } },
+                            accent: game.variant.accent
+                        )
                     } else if !game.hasReceivedDeck {
                         VersusConnectingOverlay(opponentName: game.remoteDisplayName)
                     }
@@ -99,7 +101,7 @@ struct VersusGameView: View {
             .animation(.default, value: showGameOver)
             .animation(.spring(response: 0.35, dampingFraction: 0.85), value: game.phase)
             .animation(.easeInOut(duration: 0.25), value: game.isLockedOut)
-            .tint(GameMode.versus.accentColor)
+            .tint(game.variant.accent)
             .toolbar { toolbarContent }
             .overlay(alignment: .bottom) {
                 if let endsAt = game.lockoutEndsAt, game.isLockedOut {
@@ -123,7 +125,7 @@ struct VersusGameView: View {
                     OpponentClaimEffect(
                         effect: effect,
                         opponentName: game.remoteDisplayName,
-                        accentColor: GameMode.versus.accentColor
+                        accentColor: game.variant.accent
                     )
                     .allowsHitTesting(false)
                 }
@@ -213,7 +215,8 @@ struct VersusGameView: View {
             opponentScore: game.remoteScore,
             yourTrios: game.localTrios,
             opponentTrios: game.remoteTrios,
-            outcome: outcome
+            outcome: outcome,
+            variant: game.variant
         )
         versusStore.record(record)
         versusBestsStore.record(

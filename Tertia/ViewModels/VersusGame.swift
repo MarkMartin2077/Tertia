@@ -24,6 +24,7 @@ final class VersusGame: Identifiable {
     // MARK: - Configuration
 
     let id = UUID()
+    let variant: VersusVariant
     private let session: MatchSession
     private let lockoutDuration: TimeInterval
     private let comboWindow: TimeInterval = 5
@@ -31,6 +32,11 @@ final class VersusGame: Identifiable {
     private let opponentClaimEffectDuration: TimeInterval
     private let rematchTimeoutDuration: TimeInterval
     private let confirmationTimeoutDuration: TimeInterval
+    /// Override for `variant.trioWinThreshold`. Production code passes
+    /// nil and uses the variant's default; tests can lower the threshold
+    /// (e.g., 2) to exercise the end-condition path without faking 10
+    /// sequential claims. Ignored for variants without a threshold.
+    private let trioWinThresholdOverride: Int?
 
     // MARK: - Identity
 
@@ -119,6 +125,15 @@ final class VersusGame: Identifiable {
     var localFastestSetSeconds: Double? { isHost ? hostFastestSetSeconds : guestFastestSetSeconds }
     var remoteFastestSetSeconds: Double? { isHost ? guestFastestSetSeconds : hostFastestSetSeconds }
 
+    /// Team aggregates for coop. Always defined (sum is well-formed for
+    /// any variant) so views can reference them unconditionally and just
+    /// switch on the variant for *which* number to surface.
+    var teamScore: Int { hostScore + guestScore }
+    var teamTrios: Int { hostTrios + guestTrios }
+    /// Coop's shared combo number. Both peer multipliers are kept in
+    /// lockstep when the variant is coop, so reading either is equivalent.
+    var teamMultiplier: Int { max(hostMultiplier, guestMultiplier) }
+
     var isLockedOut: Bool {
         guard let end = lockoutEndsAt else { return false }
         return clock() < end
@@ -141,21 +156,25 @@ final class VersusGame: Identifiable {
 
     init(
         session: MatchSession,
+        variant: VersusVariant = .normal,
         localDisplayName: String = "You",
         remoteDisplayName: String = "Opponent",
         lockoutDuration: TimeInterval = 1.5,
         opponentClaimEffectDuration: TimeInterval = 1.5,
         rematchTimeoutDuration: TimeInterval = 15,
         confirmationTimeoutDuration: TimeInterval = 15,
+        trioWinThresholdOverride: Int? = nil,
         clock: @escaping @MainActor () -> Date = { .now }
     ) {
         self.session = session
+        self.variant = variant
         self.localDisplayName = localDisplayName
         self.remoteDisplayName = remoteDisplayName
         self.lockoutDuration = lockoutDuration
         self.opponentClaimEffectDuration = opponentClaimEffectDuration
         self.rematchTimeoutDuration = rematchTimeoutDuration
         self.confirmationTimeoutDuration = confirmationTimeoutDuration
+        self.trioWinThresholdOverride = trioWinThresholdOverride
         self.clock = clock
         self.isHost = session.isHost
         self.localPlayerID = session.localPlayerID
@@ -229,11 +248,12 @@ final class VersusGame: Identifiable {
     }
 
     /// Local player forfeits. Broadcasts a `.forfeit` and immediately ends
-    /// the local match — opponent will record a win when the message arrives.
+    /// the local match — opponent will record a win (competitive) or a
+    /// matching `.coopAbandoned` (coop) when the message arrives.
     func forfeit() async {
         guard outcome == nil else { return }
         await session.send(.forfeit(by: localPlayerID))
-        finish(outcome: .forfeit)
+        finish(outcome: variant == .coop ? .coopAbandoned : .forfeit)
     }
 
     // MARK: - Pre-game confirmation
@@ -245,7 +265,7 @@ final class VersusGame: Identifiable {
         guard phase == .awaitingConfirmation else { return }
         guard localConfirmation == .pending else { return }
         localConfirmation = .accepted
-        await session.send(.matchConfirmation(by: localPlayerID, accepted: true))
+        await session.send(.matchConfirmation(by: localPlayerID, accepted: true, variant: variant))
         evaluateConfirmationProgress()
     }
 
@@ -255,7 +275,7 @@ final class VersusGame: Identifiable {
         guard phase == .awaitingConfirmation else { return }
         guard localConfirmation == .pending else { return }
         localConfirmation = .declined
-        await session.send(.matchConfirmation(by: localPlayerID, accepted: false))
+        await session.send(.matchConfirmation(by: localPlayerID, accepted: false, variant: variant))
         abandonMatch()
     }
 
@@ -468,12 +488,24 @@ final class VersusGame: Identifiable {
         let basePoints = explanation.difficultyPoints
         let isClaimerHost = (claimer == hostID)
 
-        // Per-player combo: claimer's multiplier ladders if their previous
-        // valid set was within the combo window. Loser's multiplier resets.
-        let lastSetAt = isClaimerHost ? hostLastSetAt : guestLastSetAt
+        // Combo model:
+        //   - Competitive variants: per-player ladder — claimer's multiplier
+        //     extends if their *own* last set was within the combo window.
+        //   - Coop: team-shared ladder — either peer claiming within the
+        //     window extends the combo for both. Rewards passing trios back
+        //     and forth quickly.
+        let lastSetAt: Date?
+        let priorMultiplier: Int
+        if variant == .coop {
+            lastSetAt = mostRecent(hostLastSetAt, guestLastSetAt)
+            priorMultiplier = teamMultiplier
+        } else {
+            lastSetAt = isClaimerHost ? hostLastSetAt : guestLastSetAt
+            priorMultiplier = currentMultiplier(forHost: isClaimerHost)
+        }
         var multiplier: Int
         if let last = lastSetAt, claimedAt.timeIntervalSince(last) <= comboWindow {
-            multiplier = min(currentMultiplier(forHost: isClaimerHost) + 1, 3)
+            multiplier = min(priorMultiplier + 1, 3)
         } else {
             multiplier = 1
         }
@@ -494,6 +526,12 @@ final class VersusGame: Identifiable {
             updateFastestSet(forHost: false, claimedAt: claimedAt)
             guestLastSetAt = claimedAt
         }
+        // Mirror the multiplier across both peers in coop so either side's
+        // UI surfaces the same shared team combo number.
+        if variant == .coop {
+            hostMultiplier = multiplier
+            guestMultiplier = multiplier
+        }
 
         // Board mutation flows through SetGame so refill rules match the
         // single-player path. Score on SetGame stays at 0 — VersusGame owns
@@ -510,6 +548,17 @@ final class VersusGame: Identifiable {
 
     private func currentMultiplier(forHost: Bool) -> Int {
         forHost ? hostMultiplier : guestMultiplier
+    }
+
+    /// Returns the later of two optional dates. Nil-aware so the call
+    /// site can pass un-set timestamps (no claim yet) without branching.
+    private func mostRecent(_ a: Date?, _ b: Date?) -> Date? {
+        switch (a, b) {
+        case (let a?, let b?): return max(a, b)
+        case (let a?, nil):    return a
+        case (nil, let b?):    return b
+        case (nil, nil):       return nil
+        }
     }
 
     private func triggerOpponentClaimEffect(cards: [SetCard], by claimer: VersusPlayerID, at claimedAt: Date) {
@@ -623,19 +672,28 @@ final class VersusGame: Identifiable {
             }
         } else if winner == localPlayerID {
             // Local player's claim was rejected — start the lockout window.
-            // Reset local combo since the chain broke.
+            // Reset local combo since the chain broke. In coop, the team's
+            // combo is shared, so resetting one peer's multiplier resets
+            // the other's too.
             let expiry = clock().addingTimeInterval(lockoutDuration)
             lockoutEndsAt = expiry
             scheduleLockoutClear(expiry: expiry)
-            if isHost {
+            if variant == .coop {
+                hostMultiplier = 1
+                guestMultiplier = 1
+            } else if isHost {
                 hostMultiplier = 1
             } else {
                 guestMultiplier = 1
             }
         } else {
             // Opponent's claim was rejected — reset their combo to match
-            // the single-player invalidation rule.
-            if winner == hostID {
+            // the single-player invalidation rule. In coop, the shared
+            // team combo resets regardless of who claimed.
+            if variant == .coop {
+                hostMultiplier = 1
+                guestMultiplier = 1
+            } else if winner == hostID {
                 hostMultiplier = 1
             } else {
                 guestMultiplier = 1
@@ -667,12 +725,38 @@ final class VersusGame: Identifiable {
 
     private func evaluateGameOver() {
         guard outcome == nil else { return }
+
+        // First-to-N: end the moment either player crosses the threshold,
+        // even with cards still in the deck. Tie is impossible because
+        // claims are sequential (host arbitrates one at a time). Tests
+        // can supply a lower override to skip simulating 10 claims.
+        if let threshold = trioWinThresholdOverride ?? variant.trioWinThreshold {
+            if localTrios >= threshold {
+                finish(outcome: .win)
+                return
+            }
+            if remoteTrios >= threshold {
+                finish(outcome: .loss)
+                return
+            }
+        }
+
+        // Natural end-of-deck condition.
         guard setGame.isGameOver else { return }
-        finish(outcome: computeNaturalOutcome())
+
+        if variant.isCompetitive {
+            finish(outcome: computeNaturalOutcome())
+        } else {
+            // Coop: both peers record the same completion outcome, no
+            // winner/loser, no winSource.
+            finish(outcome: .coopCompleted)
+        }
     }
 
-    /// Final outcome at the end of the deck. Spec: higher score wins, tied
-    /// score breaks on trio count, both ties → draw.
+    /// Final outcome at the end of the deck for a competitive variant.
+    /// Spec: higher score wins, tied score breaks on trio count, both
+    /// ties → draw. Coop runs don't go through this — they end with
+    /// `.coopCompleted` regardless of per-player numbers.
     private func computeNaturalOutcome() -> VersusOutcome {
         if localScore > remoteScore { return .win }
         if localScore < remoteScore { return .loss }
@@ -776,11 +860,17 @@ final class VersusGame: Identifiable {
             handleDealThreeAck(newCards: newCards)
 
         case .forfeit:
-            // Opponent forfeited — local player records a win, unless we
-            // already have an outcome (e.g. our own forfeit raced theirs).
-            // `finish` is internally guarded but make the intent explicit.
+            // Opponent forfeited.
+            //   - Competitive: local player records a win.
+            //   - Coop: both peers record `.coopAbandoned` — no winner.
+            // `finish` is internally guarded but make the intent explicit
+            // in case our own forfeit raced theirs.
             if outcome == nil {
-                finish(outcome: .win, winSource: .opponentForfeited)
+                if variant == .coop {
+                    finish(outcome: .coopAbandoned)
+                } else {
+                    finish(outcome: .win, winSource: .opponentForfeited)
+                }
             }
 
         case .rematchRequest:
@@ -789,8 +879,18 @@ final class VersusGame: Identifiable {
         case .rematchDecline:
             handleRematchDecline()
 
-        case .matchConfirmation(_, let accepted):
+        case .matchConfirmation(_, let accepted, let remoteVariant):
             guard phase == .awaitingConfirmation else { return }
+            // GameKit's playerGroup gate should already prevent this, but a
+            // misconfigured client (or a test path that bypasses GameKit)
+            // could reach us with a mismatched variant. Treat it as a hard
+            // decline rather than playing the wrong mode.
+            if remoteVariant != variant {
+                logger.error("Variant mismatch in matchConfirmation: local=\(self.variant.rawValue) remote=\(remoteVariant.rawValue) — declining")
+                remoteConfirmation = .declined
+                evaluateConfirmationProgress()
+                return
+            }
             remoteConfirmation = accepted ? .accepted : .declined
             evaluateConfirmationProgress()
 
@@ -858,6 +958,12 @@ final class VersusGame: Identifiable {
     }
 
     private func outcomeForDisconnect(reason: MatchSessionState.DisconnectReason) -> (outcome: VersusOutcome, winSource: VersusWinSource?) {
+        // Coop has no winner concept — every disconnect/transport failure
+        // resolves to `.coopAbandoned` so neither peer's stats inflate.
+        if variant == .coop {
+            return (.coopAbandoned, nil)
+        }
+
         switch reason {
         case .localDisconnect:
             // Local user explicitly left (e.g. forfeit() already set outcome,
