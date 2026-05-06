@@ -274,6 +274,63 @@ struct VersusGameTests {
         }
     }
 
+    @Test("Lockout auto-clears after its duration expires so view dimming releases")
+    func lockoutClearsAfterDurationExpires() async throws {
+        // Bug regression: `lockoutEndsAt` was set on a failed claim but never
+        // cleared on natural expiry. Because `isLockedOut` is a time-based
+        // computed property, SwiftUI's @Observable wouldn't re-evaluate it
+        // when the deadline passed, leaving the view stuck dimmed/locked.
+        // A scheduled clear task now nils `lockoutEndsAt` at expiry.
+        //
+        // Short lockoutDuration so the auto-clear lands within tick window —
+        // same shape as `opponentClaimEffectLifecycle`.
+        let hostTransport = StubMatchTransport(localPlayerID: "P-1", remotePlayerID: "P-2")
+        let guestTransport = StubMatchTransport(localPlayerID: "P-2", remotePlayerID: "P-1")
+        hostTransport.peer = guestTransport
+        guestTransport.peer = hostTransport
+        let hostSession = MatchSession(transport: hostTransport, timings: Self.timings)
+        let guestSession = MatchSession(transport: guestTransport, timings: Self.timings)
+        hostSession.start()
+        guestSession.start()
+        let hostGame = VersusGame(session: hostSession, lockoutDuration: 0.1)
+        let guestGame = VersusGame(session: guestSession, lockoutDuration: 0.1)
+        await hostGame.start()
+        await guestGame.start()
+        try await tick()
+        await hostGame.acceptMatch()
+        await guestGame.acceptMatch()
+        try await tick()
+
+        // Plant an invalid trio (mixed-shape, all-same color/count/fill on
+        // two of three) on both peers' boards.
+        let invalid = [
+            SetCard(shape: .circle, count: .one, color: .red, fill: .filled),
+            SetCard(shape: .circle, count: .one, color: .red, fill: .empty),
+            SetCard(shape: .square, count: .two, color: .red, fill: .filled)
+        ]
+        for (i, card) in invalid.enumerated() {
+            hostGame.setGame.boardSlots[i] = card
+            guestGame.setGame.boardSlots[i] = card
+        }
+
+        // Guest claims the invalid trio. Host arbitrates → rejects → guest
+        // receives result and starts its lockout window.
+        for card in invalid {
+            await guestGame.toggleSelection(card)
+        }
+        try await Task.sleep(for: .milliseconds(60))
+
+        #expect(guestGame.isLockedOut)
+        #expect(guestGame.lockoutEndsAt != nil)
+
+        // Wait past the 100ms lockout. Pre-fix this would still be locked out
+        // because `lockoutEndsAt` was never cleared.
+        try await Task.sleep(for: .milliseconds(200))
+
+        #expect(!guestGame.isLockedOut)
+        #expect(guestGame.lockoutEndsAt == nil)
+    }
+
     @Test("Forfeit from local ends the match locally and signals opponent's win")
     func forfeitEndsMatch() async throws {
         let pair = makePair()

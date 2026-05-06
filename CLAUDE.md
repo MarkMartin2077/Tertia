@@ -80,4 +80,3 @@ Constants live on `SetGame`: `boardSize = 12`, `setSize = 3`, `maxBoardSize = 21
 - Models and pure functions are marked `nonisolated` for Swift 6 concurrency; preserve this when adding new model types.
 - `SetCard` synthesizes `Hashable` from a UUID, so two cards with identical attributes are distinct instances. Tests rely on this when planting known cards into `boardSlots`.
 - New game modes require touching `GameMode` capability flags, the `ModeSelectView` list (`regularModes` excludes `.daily`, which is surfaced via `DailyHeroCard`), and possibly `GameView`'s game-over branching (`timeAttack` records to `HighScoreStore`, `daily` records to `DailyStore`).
-- `IMPROVEMENT_PLAN.md` at the repo root tracks known issues and planned work — consult it before starting non-trivial gameplay changes; some items there are already done (the doc lags the code).

@@ -18,54 +18,6 @@ import OSLog
 
 private let logger = Logger(subsystem: "Mark.Tertia", category: "VersusGame")
 
-/// Snapshot of an opponent's just-completed successful claim. Drives the
-/// 1.5s pulsing-highlight overlay so the local player can see what the
-/// opponent grabbed before the cards dissolve.
-struct OpponentClaimEffectState: Equatable {
-    let cards: [SetCard]
-    let claimedBy: VersusPlayerID
-    let startedAt: Date
-}
-
-/// Local-side state machine for the post-game rematch flow. Per Q15 in
-/// VERSUS_PLAN.md: tap Rematch → wait up to 15s → if opponent agrees, both
-/// transition to a fresh game; if they decline or time out, surface a
-/// "find a new match?" suggestion.
-enum RematchState: Equatable, Sendable {
-    case idle
-    case localRequested
-    case opponentRequested
-    case agreed
-    case opponentDeclined
-}
-
-/// Why the local player won (when `outcome == .win`). Drives the headline
-/// and subtitle text on the game-over sheet so a "you won by score" reads
-/// differently from "the opponent disconnected mid-match."
-enum VersusWinSource: Equatable, Sendable {
-    case scoreFinal
-    case opponentForfeited
-    case opponentDisconnected
-}
-
-/// Lifecycle phases for a versus session. The pre-game `awaitingConfirmation`
-/// stage gives both peers a chance to back out after GameKit hands them an
-/// opponent — the deck isn't seeded until both confirm. `ended` covers both
-/// gameplay completion (with `outcome` set) and pre-game abandonment
-/// (`outcome == nil`).
-enum VersusGamePhase: Equatable, Sendable {
-    case awaitingConfirmation
-    case playing
-    case ended
-}
-
-/// Per-peer confirmation state during the pre-game handshake.
-enum MatchConfirmationDecision: Equatable, Sendable {
-    case pending
-    case accepted
-    case declined
-}
-
 @MainActor
 @Observable
 final class VersusGame: Identifiable {
@@ -152,6 +104,7 @@ final class VersusGame: Identifiable {
     private var processedClaimIDs: Set<UUID> = []
     private var pumpTask: Task<Void, Never>?
     private var stateObserverTask: Task<Void, Never>?
+    private var lockoutClearTask: Task<Void, Never>?
 
     // MARK: - Convenience
 
@@ -232,6 +185,7 @@ final class VersusGame: Identifiable {
     func leave() {
         pumpTask?.cancel()
         stateObserverTask?.cancel()
+        lockoutClearTask?.cancel()
         session.leave()
     }
 
@@ -439,6 +393,8 @@ final class VersusGame: Identifiable {
         hostLastResolveAt = nil
         guestLastResolveAt = nil
         selectedCards.removeAll()
+        lockoutClearTask?.cancel()
+        lockoutClearTask = nil
         lockoutEndsAt = nil
         opponentClaimEffect = nil
         processedClaimIDs.removeAll()
@@ -574,6 +530,25 @@ final class VersusGame: Identifiable {
         }
     }
 
+    /// Clears `lockoutEndsAt` once the window expires so the view layer's
+    /// `isLockedOut`-driven dimming and progress bar fall away. Without this
+    /// the @Observable view never re-evaluates the time-based computed
+    /// property and stays stuck in the locked-out visual state.
+    private func scheduleLockoutClear(expiry: Date) {
+        lockoutClearTask?.cancel()
+        lockoutClearTask = Task { @MainActor [weak self] in
+            let interval = expiry.timeIntervalSinceNow
+            if interval > 0 {
+                try? await Task.sleep(for: .seconds(interval))
+            }
+            guard !Task.isCancelled else { return }
+            // Only clear if this is still the same lockout — a new failed
+            // claim landing during the sleep extends the window.
+            guard self?.lockoutEndsAt == expiry else { return }
+            self?.lockoutEndsAt = nil
+        }
+    }
+
     private func updateFastestSet(forHost: Bool, claimedAt: Date) {
         let lastResolve = forHost ? hostLastResolveAt : guestLastResolveAt
         guard let last = lastResolve else {
@@ -649,7 +624,9 @@ final class VersusGame: Identifiable {
         } else if winner == localPlayerID {
             // Local player's claim was rejected — start the lockout window.
             // Reset local combo since the chain broke.
-            lockoutEndsAt = clock().addingTimeInterval(lockoutDuration)
+            let expiry = clock().addingTimeInterval(lockoutDuration)
+            lockoutEndsAt = expiry
+            scheduleLockoutClear(expiry: expiry)
             if isHost {
                 hostMultiplier = 1
             } else {
