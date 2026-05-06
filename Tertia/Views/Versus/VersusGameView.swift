@@ -270,6 +270,14 @@ struct VersusGameView: View {
     /// take effect; until they do, GameKit logs an error and we silently
     /// continue.
     private func submitLeaderboards(for outcome: VersusOutcome) {
+        // The existing leaderboards (wins / fastest set / longest combo)
+        // were defined for the original Normal-mode head-to-head and
+        // mixing in First-to-10 / Co-op runs would pollute their meaning
+        // — First-to-10 wins arrive faster, Co-op runs share scoring
+        // across two players. Gate to Normal until per-variant boards
+        // exist in App Store Connect.
+        guard game.variant == .normal else { return }
+
         let bests = versusBestsStore.bests
         Task {
             // Wins ladder updates only when the local player actually won —

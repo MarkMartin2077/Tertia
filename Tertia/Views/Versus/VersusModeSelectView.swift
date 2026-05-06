@@ -48,12 +48,19 @@ struct VersusModeSelectView: View {
                     Button("Cancel", action: onCancel)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        onStart(selectedVariant, .inviteFriend)
-                    } label: {
-                        Label("Invite", systemImage: "person.crop.circle.badge.plus")
+                    // Invite Friend is gated to Normal because GameKit
+                    // invites don't carry the inviter's variant — the
+                    // accepting peer would always default to .normal and
+                    // mismatch-decline anything else. Gating up front
+                    // keeps that failure mode out of the user's path.
+                    if selectedVariant == .normal {
+                        Button {
+                            onStart(selectedVariant, .inviteFriend)
+                        } label: {
+                            Label("Invite", systemImage: "person.crop.circle.badge.plus")
+                        }
+                        .accessibilityLabel("Invite friend to \(selectedVariant.shortName)")
                     }
-                    .accessibilityLabel("Invite friend to \(selectedVariant.shortName)")
                 }
             }
             .safeAreaInset(edge: .bottom) {

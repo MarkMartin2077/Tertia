@@ -15,7 +15,7 @@ struct PlayCoordinator: View {
     @Environment(GameCenterService.self) private var gameCenter
     @State private var activeMode: GameMode?
     @State private var versusFlow: VersusFlow?
-    @State private var matchmakingError: String?
+    @State private var matchmakingError: MatchmakingError?
     /// Set when the user taps Versus while signed out of Game Center.
     /// Drives the sign-in prompt; once GC auth succeeds, the mode-select
     /// sheet opens automatically. Holds the intent the user originally
@@ -87,10 +87,20 @@ struct PlayCoordinator: View {
                 set: { if !$0 { matchmakingError = nil } }
             ),
             presenting: matchmakingError
-        ) { _ in
+        ) { error in
+            // Non-Normal variants can hang on a thin matchmaking pool;
+            // surface the fallback so the user isn't dead-ended on a
+            // mode no one else is currently playing.
+            if error.variant != .normal {
+                Button("Try Normal instead") {
+                    let intent = error.intent
+                    matchmakingError = nil
+                    startVersus(intent: intent, variant: .normal)
+                }
+            }
             Button("OK", role: .cancel) {}
-        } message: { message in
-            Text(message)
+        } message: { error in
+            Text(error.message)
         }
         .alert(
             "Sign in to Game Center",
@@ -233,9 +243,36 @@ struct PlayCoordinator: View {
     }
 
     private func handleMatchmakingError(_ error: Error) {
+        // Capture the in-flight variant + intent before tearing the flow
+        // down so the alert can offer a "Try Normal instead" recovery.
+        // Invite-driven flows can't fall back (the invite is to a
+        // specific friend with a specific variant), so the fallback is
+        // gated to intent-driven flows only.
+        var fallbackVariant: VersusVariant = .normal
+        var fallbackIntent: VersusMatchIntent = .quickMatch
+        if case .matchmaker(let source, let variant) = versusFlow {
+            fallbackVariant = variant
+            if case .intent(let intent) = source {
+                fallbackIntent = intent
+            }
+        }
         versusFlow = nil
-        matchmakingError = error.localizedDescription
+        matchmakingError = MatchmakingError(
+            message: error.localizedDescription,
+            variant: fallbackVariant,
+            intent: fallbackIntent
+        )
     }
+}
+
+/// Pulled out of `String?` so the alert can offer a variant-aware
+/// "Try Normal instead" recovery without losing the original intent
+/// (Quick Match vs Invite Friend).
+private struct MatchmakingError: Identifiable {
+    let id = UUID()
+    let message: String
+    let variant: VersusVariant
+    let intent: VersusMatchIntent
 }
 
 /// Single-cover state machine for everything Versus. Modeling matchmaker
