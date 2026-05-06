@@ -20,6 +20,7 @@ struct GameView: View {
     @Environment(DailyStore.self) private var dailyStore
     @Environment(GameSessionStore.self) private var sessionStore
     @Environment(FeedbackService.self) private var feedback
+    @Environment(MusicService.self) private var music
     @Environment(GameCenterService.self) private var gameCenter
 
     @State private var showNewGameConfirm = false
@@ -212,7 +213,15 @@ struct GameView: View {
             }
             .onChange(of: scenePhase) { _, phase in
                 handleScenePhase(phase)
+                switch phase {
+                case .active:     music.resume()
+                case .background: music.suspend()
+                case .inactive:   music.suspend()
+                @unknown default: break
+                }
             }
+            .onAppear { music.gameStarted() }
+            .onDisappear { music.gameStopped() }
             .task(id: taskTrigger) {
                 if !hasDealtInitialBoard {
                     await runDealAnimation()
@@ -772,5 +781,6 @@ struct GameView: View {
         .environment(DailyStore())
         .environment(GameSessionStore())
         .environment(FeedbackService())
+        .environment(MusicService())
         .environment(GameCenterService())
 }

@@ -16,6 +16,7 @@ struct TertiaApp: App {
     @State private var versusStore: VersusStore
     @State private var versusBestsStore: VersusBestsStore
     @State private var feedback = FeedbackService()
+    @State private var music = MusicService()
     @State private var gameCenter = GameCenterService()
 
     init() {
@@ -47,6 +48,7 @@ struct TertiaApp: App {
                 .environment(versusStore)
                 .environment(versusBestsStore)
                 .environment(feedback)
+                .environment(music)
                 .environment(gameCenter)
                 .gameCenterAuthenticationCover(service: gameCenter)
                 .task {

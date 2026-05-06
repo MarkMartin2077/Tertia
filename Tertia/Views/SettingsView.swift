@@ -35,7 +35,9 @@ struct SettingsView: View {
     @AppStorage("colorSchemePreference") private var colorSchemePreference: ColorSchemePreference = .system
     @AppStorage("soundEnabled") private var soundEnabled: Bool = true
     @AppStorage("hapticsEnabled") private var hapticsEnabled: Bool = true
+    @AppStorage("musicEnabled") private var musicEnabled: Bool = true
     @Environment(GameCenterService.self) private var gameCenter
+    @Environment(MusicService.self) private var music
 
     var body: some View {
         NavigationStack {
@@ -49,6 +51,10 @@ struct SettingsView: View {
                 }
 
                 Section("Audio & Haptics") {
+                    Toggle("Music", isOn: $musicEnabled)
+                        .onChange(of: musicEnabled) { _, newValue in
+                            music.setEnabled(newValue)
+                        }
                     Toggle("Sound Effects", isOn: $soundEnabled)
                     Toggle("Haptic Feedback", isOn: $hapticsEnabled)
                 }
@@ -179,4 +185,5 @@ private struct ExternalLinkRow: View {
 #Preview {
     SettingsView()
         .environment(GameCenterService())
+        .environment(MusicService())
 }

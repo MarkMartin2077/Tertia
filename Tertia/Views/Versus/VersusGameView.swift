@@ -29,6 +29,7 @@ struct VersusGameView: View {
     }
 
     @Environment(FeedbackService.self) private var feedback
+    @Environment(MusicService.self) private var music
     @Environment(VersusStore.self) private var versusStore
     @Environment(VersusBestsStore.self) private var versusBestsStore
     @Environment(GameCenterService.self) private var gameCenter
@@ -202,9 +203,11 @@ struct VersusGameView: View {
                 // causing GameKit's UDP traffic to drop, manifesting as
                 // mid-match disconnects when both players were on Wi-Fi.
                 UIApplication.shared.isIdleTimerDisabled = true
+                music.gameStarted()
             }
             .onDisappear {
                 UIApplication.shared.isIdleTimerDisabled = false
+                music.gameStopped()
             }
         }
     }
@@ -245,6 +248,14 @@ struct VersusGameView: View {
     /// the timer is cancelled. Pre-game confirmation backgrounding is still
     /// an immediate decline (no skin in the game yet).
     private func handleScenePhaseChange(_ phase: ScenePhase) {
+        // Music suspend/resume runs regardless of game outcome — even
+        // post-game we want it to pause when the player backgrounds.
+        switch phase {
+        case .background, .inactive: music.suspend()
+        case .active:                music.resume()
+        @unknown default:            break
+        }
+
         guard game.outcome == nil else { return }
 
         switch phase {
