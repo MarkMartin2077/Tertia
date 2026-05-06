@@ -243,6 +243,7 @@ class SetGame {
     }
 
     func dealThreeMore(now: Date = .now) {
+        guard gameEndedAt == nil else { return }
         guard canDealThree else { return }
         withAnimation {
             boardSlots.append(contentsOf: drawCards(count: SetGame.setSize))
@@ -251,6 +252,11 @@ class SetGame {
     }
 
     func select(_ card: SetCard, now: Date = .now) {
+        // Once `gameEndedAt` is stamped, taps are dead — guards against
+        // a player dismissing the game-over sheet and continuing to
+        // claim trios after timer expiry. Belt-and-suspenders alongside
+        // the view-layer dismiss-disabled gate.
+        guard gameEndedAt == nil else { return }
         guard boardSlots.contains(card) else { return }
 
         if selectedCards.contains(card) {

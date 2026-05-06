@@ -234,7 +234,15 @@ struct GameView: View {
                 async let hint: Void = runHintWatcher()
                 _ = await (timer, hint)
             }
-            .sheet(isPresented: $showGameOver) { gameOverSheet }
+            .sheet(isPresented: $showGameOver) {
+                gameOverSheet
+                    // Non-dismissable. Swiping the sheet away used to
+                    // expose a still-tappable board, letting the player
+                    // claim more trios after time expired. Combined with
+                    // SetGame's `gameEndedAt` guard, taps post-expiry
+                    // are now a no-op either way.
+                    .interactiveDismissDisabled()
+            }
         }
     }
 
@@ -674,11 +682,15 @@ struct GameView: View {
         let finalScore = game.score
         let duration = Int(controller.totalDuration)
 
-        // Capture a missed trio for Time Attack zero-score endings so
-        // the sheet can offer a teaching disclosure. The board snapshot
-        // is taken before any teardown so the cards we surface are the
-        // exact ones the player was looking at when the timer hit zero.
-        if mode == .timeAttack, game.totalSetsFound == 0 {
+        // Capture a missed trio for Time Attack so the sheet can offer
+        // a teaching disclosure regardless of how many the player
+        // already found — there's almost always one more on the board
+        // and seeing it is useful even after a strong run. The board
+        // snapshot is taken before any teardown so the cards surfaced
+        // are exactly the ones the player was looking at when the
+        // timer hit zero. `findSetOnBoard()` returns nil when no valid
+        // trio remains; the disclosure self-hides in that case.
+        if mode == .timeAttack {
             missedTrioAtExpiry = game.findSetOnBoard()
         }
 
