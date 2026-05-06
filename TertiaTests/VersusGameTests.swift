@@ -714,6 +714,144 @@ struct VersusGameTests {
         #expect(guestGame.outcome == .loss)
     }
 
+    @Test("First-to-N mercy: leader wins when trailer can't reach threshold")
+    func firstToNMercyEndsEarly() async throws {
+        // Setup: First-to-3 with a thin remainder. Leader has 2 trios,
+        // trailer has 0. Threshold is 3. We'll drain the deck so only a
+        // few cards remain — at the point where the trailer could only
+        // possibly claim 0 more trios, mercy must fire.
+        let hostTransport = StubMatchTransport(localPlayerID: "P-1", remotePlayerID: "P-2")
+        let guestTransport = StubMatchTransport(localPlayerID: "P-2", remotePlayerID: "P-1")
+        hostTransport.peer = guestTransport
+        guestTransport.peer = hostTransport
+        let hostSession = MatchSession(transport: hostTransport, timings: Self.timings)
+        let guestSession = MatchSession(transport: guestTransport, timings: Self.timings)
+        hostSession.start()
+        guestSession.start()
+
+        let hostGame = VersusGame(
+            session: hostSession,
+            variant: .firstTo10,
+            lockoutDuration: 2.0,
+            trioWinThresholdOverride: 3
+        )
+        let guestGame = VersusGame(
+            session: guestSession,
+            variant: .firstTo10,
+            lockoutDuration: 2.0,
+            trioWinThresholdOverride: 3
+        )
+        await hostGame.start()
+        await guestGame.start()
+        try await tick()
+        await hostGame.acceptMatch()
+        await guestGame.acceptMatch()
+        try await tick()
+
+        // Plant + claim two trios for the host so they're at 2 / threshold 3.
+        let trio1 = [
+            SetCard(shape: .circle, count: .one, color: .red, fill: .filled),
+            SetCard(shape: .square, count: .two, color: .green, fill: .empty),
+            SetCard(shape: .triangle, count: .three, color: .blue, fill: .rightHalf)
+        ]
+        for (i, card) in trio1.enumerated() {
+            hostGame.setGame.boardSlots[i] = card
+            guestGame.setGame.boardSlots[i] = card
+        }
+        for card in trio1 { await hostGame.toggleSelection(card) }
+        try await tick()
+
+        let trio2 = [
+            SetCard(shape: .circle, count: .two, color: .red, fill: .empty),
+            SetCard(shape: .square, count: .three, color: .green, fill: .rightHalf),
+            SetCard(shape: .triangle, count: .one, color: .blue, fill: .filled)
+        ]
+        for (i, card) in trio2.enumerated() {
+            hostGame.setGame.boardSlots[i] = card
+            guestGame.setGame.boardSlots[i] = card
+        }
+        for card in trio2 { await hostGame.toggleSelection(card) }
+        try await tick()
+
+        #expect(hostGame.hostTrios == 2)
+        #expect(hostGame.guestTrios == 0)
+        #expect(hostGame.outcome == nil) // not over yet — host needs 1 more
+
+        // Drain the deck so total remaining cards (board + deck) is below
+        // 3 — then guest can't claim any more trios. Threshold is 3,
+        // guest at 0, can claim 0 trios → 0 < 3 → mercy fires.
+        hostGame.setGame.deck = []
+        guestGame.setGame.deck = []
+        // Plant a couple of cards on the board that don't form a trio
+        // (to be safe — even if they did, board.count / 3 = 0 trios).
+        let stubs = [
+            SetCard(shape: .circle, count: .one, color: .red, fill: .filled),
+            SetCard(shape: .circle, count: .one, color: .red, fill: .empty)
+        ]
+        hostGame.setGame.boardSlots = stubs
+        guestGame.setGame.boardSlots = stubs
+
+        // Nudge evaluateGameOver via a deal-three request (host applies,
+        // re-evaluates). With deck empty this is a no-op for state but
+        // gives evaluateGameOver a chance to run.
+        await hostGame.requestDealThree()
+        try await tick()
+
+        // Mercy should have fired — host is leader, guest mathematically
+        // pinned below threshold.
+        #expect(hostGame.outcome == .win)
+        #expect(guestGame.outcome == .loss)
+    }
+
+    @Test("First-to-N mercy doesn't fire when trailer could still reach threshold")
+    func firstToNMercyHoldsWhenStillReachable() async throws {
+        let hostTransport = StubMatchTransport(localPlayerID: "P-1", remotePlayerID: "P-2")
+        let guestTransport = StubMatchTransport(localPlayerID: "P-2", remotePlayerID: "P-1")
+        hostTransport.peer = guestTransport
+        guestTransport.peer = hostTransport
+        let hostSession = MatchSession(transport: hostTransport, timings: Self.timings)
+        let guestSession = MatchSession(transport: guestTransport, timings: Self.timings)
+        hostSession.start()
+        guestSession.start()
+        let hostGame = VersusGame(
+            session: hostSession,
+            variant: .firstTo10,
+            lockoutDuration: 2.0,
+            trioWinThresholdOverride: 3
+        )
+        let guestGame = VersusGame(
+            session: guestSession,
+            variant: .firstTo10,
+            lockoutDuration: 2.0,
+            trioWinThresholdOverride: 3
+        )
+        await hostGame.start()
+        await guestGame.start()
+        try await tick()
+        await hostGame.acceptMatch()
+        await guestGame.acceptMatch()
+        try await tick()
+
+        // Host claims one trio: 1-0. Threshold 3. Plenty of board
+        // remains (initial 12-card deal — guest could still claim 4
+        // trios), so mercy must NOT fire.
+        let trio = [
+            SetCard(shape: .circle, count: .one, color: .red, fill: .filled),
+            SetCard(shape: .square, count: .two, color: .green, fill: .empty),
+            SetCard(shape: .triangle, count: .three, color: .blue, fill: .rightHalf)
+        ]
+        for (i, card) in trio.enumerated() {
+            hostGame.setGame.boardSlots[i] = card
+            guestGame.setGame.boardSlots[i] = card
+        }
+        for card in trio { await hostGame.toggleSelection(card) }
+        try await tick()
+
+        #expect(hostGame.hostTrios == 1)
+        #expect(hostGame.outcome == nil)
+        #expect(guestGame.outcome == nil)
+    }
+
     @Test("First-to-N is variant-gated — Normal doesn't end mid-deck")
     func normalIgnoresThresholdEvenAtTenTrios() async throws {
         let pair = makePair()

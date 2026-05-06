@@ -760,6 +760,23 @@ final class VersusGame: Identifiable {
                 finish(outcome: .loss)
                 return
             }
+
+            // Mercy rule: if the trailing player can't reach the threshold
+            // even by claiming every remaining card in play, the leader
+            // has won mathematically — no point dragging the deck out.
+            // Conservative cap: floor((board + undealt) / 3) is the
+            // absolute max additional trios anyone could claim, ignoring
+            // whether those cards actually form sets. That makes the
+            // mercy strict (won't trigger early on a marginal lead).
+            let maxRemainingTrios = (setGame.boardSlots.count + setGame.deck.count) / SetGame.setSize
+            if localTrios > remoteTrios, remoteTrios + maxRemainingTrios < threshold {
+                finish(outcome: .win)
+                return
+            }
+            if remoteTrios > localTrios, localTrios + maxRemainingTrios < threshold {
+                finish(outcome: .loss)
+                return
+            }
         }
 
         // Natural end-of-deck condition.
