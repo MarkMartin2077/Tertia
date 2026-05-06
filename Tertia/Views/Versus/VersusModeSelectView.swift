@@ -75,11 +75,12 @@ struct VersusModeSelectView: View {
     }
 
     private var cardsSection: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: 10) {
             ForEach(VersusVariant.allCases, id: \.self) { variant in
                 VersusVariantCard(
                     variant: variant,
                     title: copy(for: variant).title,
+                    tagline: copy(for: variant).tagline,
                     description: copy(for: variant).description,
                     glyph: copy(for: variant).glyph,
                     accent: accent(for: variant),
@@ -133,6 +134,7 @@ struct VersusModeSelectView: View {
 
     private struct CardCopy {
         let title: String
+        let tagline: String
         let description: String
         let glyph: String
     }
@@ -142,18 +144,21 @@ struct VersusModeSelectView: View {
         case .normal:
             return CardCopy(
                 title: "NORMAL",
+                tagline: "Race for the highest score, no clock",
                 description: "Race for the highest score. No clock. Ends when the deck runs out.",
                 glyph: "infinity"
             )
         case .firstTo10:
             return CardCopy(
                 title: "FIRST TO 10",
+                tagline: "Sprint to 10 trios",
                 description: "First player to claim 10 trios wins. Fast-paced races.",
                 glyph: "10.circle.fill"
             )
         case .coop:
             return CardCopy(
                 title: "CO-OP",
+                tagline: "Work through the deck together",
                 description: "Team up. Work through the deck together — no winner, just speed and accuracy.",
                 glyph: "person.2.fill"
             )

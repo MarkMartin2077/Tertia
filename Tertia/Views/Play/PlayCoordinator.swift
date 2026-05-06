@@ -78,7 +78,11 @@ struct PlayCoordinator: View {
                 },
                 onCancel: { showModeSelect = false }
             )
-            .presentationDetents([.medium, .large])
+            // Large only. The selected card expands to show its full
+            // description, so a fixed medium detent risks pushing the
+            // action bar off-screen when the third (Co-op) row is the
+            // selected one.
+            .presentationDetents([.large])
         }
         .alert(
             "Couldn't find a match",
