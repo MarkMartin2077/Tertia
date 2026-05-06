@@ -37,10 +37,14 @@ struct VersusVariantCard: View {
                 headerRow
                 if isSelected {
                     detailPanel
-                        .transition(.asymmetric(
-                            insertion: .opacity.combined(with: .move(edge: .top)),
-                            removal: .opacity
-                        ))
+                        // Pure opacity. The parent's spring animates the
+                        // VStack's height as the panel appears/disappears,
+                        // so motion is already handled. Adding a `.move`
+                        // makes the insertion slide *from* the header's
+                        // edge, which reads as the description emerging
+                        // out of the title row — and when switching
+                        // cards, the two transitions overlap visually.
+                        .transition(.opacity)
                 }
             }
             .padding(.horizontal, 14)

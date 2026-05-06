@@ -140,26 +140,30 @@ struct VersusModeSelectView: View {
     }
 
     private func copy(for variant: VersusVariant) -> CardCopy {
+        // Tagline and description are intentionally non-overlapping —
+        // tagline is the hook (visible always), description is the
+        // elaboration (visible when selected). Repeating phrasing reads
+        // as text "switching" during the expand animation.
         switch variant {
         case .normal:
             return CardCopy(
                 title: "NORMAL",
-                tagline: "Race for the highest score, no clock",
-                description: "Race for the highest score. No clock. Ends when the deck runs out.",
+                tagline: "Race for the highest score",
+                description: "No clock. The match ends when the deck runs out.",
                 glyph: "infinity"
             )
         case .firstTo10:
             return CardCopy(
                 title: "FIRST TO 10",
-                tagline: "Sprint to 10 trios",
-                description: "First player to claim 10 trios wins. Fast-paced races.",
+                tagline: "First to 10 trios wins",
+                description: "Fast-paced races. Every claim shifts the lead.",
                 glyph: "10.circle.fill"
             )
         case .coop:
             return CardCopy(
                 title: "CO-OP",
-                tagline: "Work through the deck together",
-                description: "Team up. Work through the deck together — no winner, just speed and accuracy.",
+                tagline: "Team up, no winner",
+                description: "Work through the deck together. Just speed and accuracy.",
                 glyph: "person.2.fill"
             )
         }
