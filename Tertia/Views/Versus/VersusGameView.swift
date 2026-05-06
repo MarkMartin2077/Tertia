@@ -187,7 +187,10 @@ struct VersusGameView: View {
                         onFindNewMatch()
                     }
                 )
-                .presentationDetents([.medium, .large])
+                // Large only. Medium pinned the title flush to the
+                // sheet's top edge with no breathing room — the post-game
+                // headline needs space above it to read as a headline.
+                .presentationDetents([.large])
                 .interactiveDismissDisabled()
             }
             .task {
