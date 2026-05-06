@@ -24,7 +24,12 @@ final class VersusGame: Identifiable {
     // MARK: - Configuration
 
     let id = UUID()
-    let variant: VersusVariant
+    /// The session's variant. Set at construction in the normal flow
+    /// (inviter chose it in the picker). For invite recipients it's a
+    /// placeholder until the inviter's first `matchConfirmation` arrives
+    /// and the variant is adopted from that message — see
+    /// `awaitingVariantFromPeer`.
+    private(set) var variant: VersusVariant
     private let session: MatchSession
     private let lockoutDuration: TimeInterval
     private let comboWindow: TimeInterval = 5
@@ -77,6 +82,14 @@ final class VersusGame: Identifiable {
     private(set) var phase: VersusGamePhase = .awaitingConfirmation
     private(set) var localConfirmation: MatchConfirmationDecision = .pending
     private(set) var remoteConfirmation: MatchConfirmationDecision = .pending
+
+    /// True while the local peer is an invite recipient who hasn't yet
+    /// received the inviter's first `matchConfirmation` (which carries
+    /// the inviter's selected variant). Drives the view layer to show a
+    /// "connecting" overlay rather than the confirmation popup until the
+    /// variant is known. Cleared the moment the peer's first
+    /// `matchConfirmation` lands.
+    private(set) var awaitingVariantFromPeer: Bool
 
     // MARK: - Local-only state
 
@@ -157,6 +170,7 @@ final class VersusGame: Identifiable {
     init(
         session: MatchSession,
         variant: VersusVariant = .normal,
+        awaitingVariantFromPeer: Bool = false,
         localDisplayName: String = "You",
         remoteDisplayName: String = "Opponent",
         lockoutDuration: TimeInterval = 1.5,
@@ -168,6 +182,7 @@ final class VersusGame: Identifiable {
     ) {
         self.session = session
         self.variant = variant
+        self.awaitingVariantFromPeer = awaitingVariantFromPeer
         self.localDisplayName = localDisplayName
         self.remoteDisplayName = remoteDisplayName
         self.lockoutDuration = lockoutDuration
@@ -264,6 +279,12 @@ final class VersusGame: Identifiable {
     func acceptMatch() async {
         guard phase == .awaitingConfirmation else { return }
         guard localConfirmation == .pending else { return }
+        // Invite recipients can't send confirmation until the inviter's
+        // variant has been adopted — sending Normal here would tell the
+        // inviter "I picked Normal" and trip their mismatch decline.
+        // The view layer hides the Accept button until adoption finishes
+        // (`awaitingVariantFromPeer`), so this guard is belt-and-suspenders.
+        guard !awaitingVariantFromPeer else { return }
         localConfirmation = .accepted
         await session.send(.matchConfirmation(by: localPlayerID, accepted: true, variant: variant))
         evaluateConfirmationProgress()
@@ -881,11 +902,18 @@ final class VersusGame: Identifiable {
 
         case .matchConfirmation(_, let accepted, let remoteVariant):
             guard phase == .awaitingConfirmation else { return }
-            // GameKit's playerGroup gate should already prevent this, but a
-            // misconfigured client (or a test path that bypasses GameKit)
-            // could reach us with a mismatched variant. Treat it as a hard
-            // decline rather than playing the wrong mode.
-            if remoteVariant != variant {
+            if awaitingVariantFromPeer {
+                // First confirmation from the inviter — adopt their
+                // variant so the popup we're about to show says the
+                // right mode. After this, the normal mismatch-decline
+                // logic resumes (catches a misbehaving peer that flips
+                // variants mid-handshake).
+                logger.info("Adopting variant from peer: \(remoteVariant.rawValue)")
+                variant = remoteVariant
+                awaitingVariantFromPeer = false
+            } else if remoteVariant != variant {
+                // Mismatch with no adoption pending — both sides chose
+                // explicitly and disagree. Decline cleanly.
                 logger.error("Variant mismatch in matchConfirmation: local=\(self.variant.rawValue) remote=\(remoteVariant.rawValue) — declining")
                 remoteConfirmation = .declined
                 evaluateConfirmationProgress()

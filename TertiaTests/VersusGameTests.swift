@@ -830,6 +830,89 @@ struct VersusGameTests {
         try await tick()
     }
 
+    @Test("Invite recipient adopts the inviter's variant on first matchConfirmation")
+    func inviteRecipientAdoptsRemoteVariant() async throws {
+        // Inviter (host) chose Co-op in their picker. Invitee (guest)
+        // accepted from Messages — they don't know the variant yet, so
+        // they construct VersusGame with the .normal placeholder and
+        // `awaitingVariantFromPeer: true`. The first matchConfirmation
+        // from the inviter should flip the guest's variant to Co-op
+        // and clear the flag.
+        let hostTransport = StubMatchTransport(localPlayerID: "P-1", remotePlayerID: "P-2")
+        let guestTransport = StubMatchTransport(localPlayerID: "P-2", remotePlayerID: "P-1")
+        hostTransport.peer = guestTransport
+        guestTransport.peer = hostTransport
+        let hostSession = MatchSession(transport: hostTransport, timings: Self.timings)
+        let guestSession = MatchSession(transport: guestTransport, timings: Self.timings)
+        hostSession.start()
+        guestSession.start()
+
+        // Inviter committed to Co-op in the picker.
+        let hostGame = VersusGame(session: hostSession, variant: .coop)
+        // Invitee has the placeholder + the awaiting flag.
+        let guestGame = VersusGame(
+            session: guestSession,
+            variant: .normal,
+            awaitingVariantFromPeer: true
+        )
+        await hostGame.start()
+        await guestGame.start()
+        try await tick()
+
+        // Sanity: pre-adoption, guest is still on .normal.
+        #expect(guestGame.variant == .normal)
+        #expect(guestGame.awaitingVariantFromPeer)
+
+        // Inviter accepts → broadcasts matchConfirmation(.coop).
+        await hostGame.acceptMatch()
+        try await tick()
+
+        // Guest should have adopted .coop and cleared the flag, but
+        // hasn't sent its own confirmation yet (UI hasn't shown the
+        // popup until adoption — Accept can't fire).
+        #expect(guestGame.variant == .coop)
+        #expect(!guestGame.awaitingVariantFromPeer)
+        #expect(guestGame.remoteConfirmation == .accepted)
+        #expect(guestGame.localConfirmation == .pending)
+
+        // Now the invitee taps Accept (popup is now visible to them).
+        await guestGame.acceptMatch()
+        try await tick()
+
+        // Both peers playing in the inviter's chosen variant.
+        #expect(hostGame.phase == .playing)
+        #expect(guestGame.phase == .playing)
+        #expect(hostGame.variant == .coop)
+        #expect(guestGame.variant == .coop)
+    }
+
+    @Test("acceptMatch is a no-op while awaitingVariantFromPeer")
+    func acceptIsHeldUntilAdoption() async throws {
+        let hostTransport = StubMatchTransport(localPlayerID: "P-1", remotePlayerID: "P-2")
+        let guestTransport = StubMatchTransport(localPlayerID: "P-2", remotePlayerID: "P-1")
+        hostTransport.peer = guestTransport
+        guestTransport.peer = hostTransport
+        let hostSession = MatchSession(transport: hostTransport, timings: Self.timings)
+        let guestSession = MatchSession(transport: guestTransport, timings: Self.timings)
+        hostSession.start()
+        guestSession.start()
+        let hostGame = VersusGame(session: hostSession, variant: .firstTo10)
+        let guestGame = VersusGame(
+            session: guestSession,
+            variant: .normal,
+            awaitingVariantFromPeer: true
+        )
+        await hostGame.start()
+        await guestGame.start()
+        try await tick()
+
+        // Trying to accept before the inviter's matchConfirmation lands
+        // should not mark localConfirmation as accepted (otherwise we'd
+        // send Normal and the inviter would mismatch-decline).
+        await guestGame.acceptMatch()
+        #expect(guestGame.localConfirmation == .pending)
+    }
+
     @Test("Mismatched variants short-circuit to decline")
     func mismatchedVariantsCauseDecline() async throws {
         // GameKit's playerGroup gating should prevent this, but a

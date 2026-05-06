@@ -47,21 +47,6 @@ struct VersusModeSelectView: View {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Cancel", action: onCancel)
                 }
-                ToolbarItem(placement: .topBarTrailing) {
-                    // Invite Friend is gated to Normal because GameKit
-                    // invites don't carry the inviter's variant — the
-                    // accepting peer would always default to .normal and
-                    // mismatch-decline anything else. Gating up front
-                    // keeps that failure mode out of the user's path.
-                    if selectedVariant == .normal {
-                        Button {
-                            onStart(selectedVariant, .inviteFriend)
-                        } label: {
-                            Label("Invite", systemImage: "person.crop.circle.badge.plus")
-                        }
-                        .accessibilityLabel("Invite friend to \(selectedVariant.shortName)")
-                    }
-                }
             }
             .safeAreaInset(edge: .bottom) {
                 actionBar
@@ -98,10 +83,10 @@ struct VersusModeSelectView: View {
     private var actionBar: some View {
         VStack(spacing: 8) {
             Button {
-                onStart(selectedVariant, .quickMatch)
+                onStart(selectedVariant, .inviteFriend)
             } label: {
                 HStack {
-                    Text("Find a Match")
+                    Label("Invite a Friend", systemImage: "person.crop.circle.badge.plus")
                         .font(.headline)
                     Spacer()
                     Image(systemName: "arrow.right.circle.fill")
@@ -113,7 +98,7 @@ struct VersusModeSelectView: View {
             .controlSize(.large)
             .tint(accent(for: selectedVariant))
 
-            Text("Looking for someone in \(selectedVariant.shortName)…")
+            Text("Pick a friend to play \(selectedVariant.shortName)")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

@@ -70,16 +70,24 @@ struct VersusGameView: View {
                 )
                 .overlay {
                     if game.phase == .awaitingConfirmation {
-                        MatchConfirmationView(
-                            opponentName: game.remoteDisplayName,
-                            variant: game.variant,
-                            localDecision: game.localConfirmation,
-                            remoteDecision: game.remoteConfirmation,
-                            onAccept: { Task { await game.acceptMatch() } },
-                            onDecline: { Task { await game.declineMatch() } }
-                        )
-                        .padding(.horizontal, 24)
-                        .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                        if game.awaitingVariantFromPeer {
+                            // Invite recipient — variant not known yet.
+                            // Hold the popup until the inviter's first
+                            // matchConfirmation arrives so the popup
+                            // displays the right mode.
+                            VersusConnectingOverlay(opponentName: game.remoteDisplayName)
+                        } else {
+                            MatchConfirmationView(
+                                opponentName: game.remoteDisplayName,
+                                variant: game.variant,
+                                localDecision: game.localConfirmation,
+                                remoteDecision: game.remoteConfirmation,
+                                onAccept: { Task { await game.acceptMatch() } },
+                                onDecline: { Task { await game.declineMatch() } }
+                            )
+                            .padding(.horizontal, 24)
+                            .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                        }
                     } else if shouldShowDealThreeOverlay {
                         VersusDealThreeOverlay(
                             onTap: { Task { await game.requestDealThree() } },

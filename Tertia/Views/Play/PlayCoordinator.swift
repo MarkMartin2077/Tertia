@@ -47,10 +47,11 @@ struct PlayCoordinator: View {
         .fullScreenCover(item: $versusFlow) { flow in
             switch flow {
             case .matchmaker(let source, let variant):
+                let isInviteRecipient = source.isAcceptedInvite
                 VersusMatchmakerView(
                     source: source,
                     variant: variant,
-                    onMatch: { match in handleMatchFound(match, variant: variant) },
+                    onMatch: { match in handleMatchFound(match, variant: variant, isInviteRecipient: isInviteRecipient) },
                     onCancel: { versusFlow = nil },
                     onError: { error in handleMatchmakingError(error) }
                 )
@@ -64,8 +65,8 @@ struct PlayCoordinator: View {
                         // pass on the same cover — single fullScreenCover
                         // handles the handoff without dismiss/present races.
                         // Reuse the just-finished match's variant so "Find
-                        // New Match" doesn't silently drop you back to Normal.
-                        versusFlow = .matchmaker(.intent(.quickMatch), game.variant)
+                        // New Match" stays in the same mode.
+                        versusFlow = .matchmaker(.intent(.inviteFriend), game.variant)
                     }
                 )
             }
@@ -85,23 +86,13 @@ struct PlayCoordinator: View {
             .presentationDetents([.large])
         }
         .alert(
-            "Couldn't find a match",
+            "Couldn't start match",
             isPresented: Binding(
                 get: { matchmakingError != nil },
                 set: { if !$0 { matchmakingError = nil } }
             ),
             presenting: matchmakingError
-        ) { error in
-            // Non-Normal variants can hang on a thin matchmaking pool;
-            // surface the fallback so the user isn't dead-ended on a
-            // mode no one else is currently playing.
-            if error.variant != .normal {
-                Button("Try Normal instead") {
-                    let intent = error.intent
-                    matchmakingError = nil
-                    startVersus(intent: intent, variant: .normal)
-                }
-            }
+        ) { _ in
             Button("OK", role: .cancel) {}
         } message: { error in
             Text(error.message)
@@ -160,10 +151,9 @@ struct PlayCoordinator: View {
         if gameCenter.isAuthenticated {
             showModeSelect = true
         } else {
-            // No specific intent yet — quickMatch is the natural default
-            // post-sign-in. The user can still pick a different variant or
-            // tap Invite Friend once the sheet is open.
-            pendingVersusIntent = .quickMatch
+            // The picker is the only way into Versus, and it's invite-only,
+            // so any post-auth resume just reopens the sheet.
+            pendingVersusIntent = .inviteFriend
             showGameCenterPrompt = true
         }
     }
@@ -225,7 +215,7 @@ struct PlayCoordinator: View {
     /// `.matchmaker` to `.game` worked for Quick Match but broke the
     /// post-accept flow for Invite Friend, presumably because GameKit's
     /// invite-only state machine takes longer to clean up.
-    private func handleMatchFound(_ match: GKMatch, variant: VersusVariant) {
+    private func handleMatchFound(_ match: GKMatch, variant: VersusVariant, isInviteRecipient: Bool) {
         let transport = GKMatchTransport(match: match)
         let session = MatchSession(transport: transport)
         session.start()
@@ -235,6 +225,12 @@ struct PlayCoordinator: View {
         let game = VersusGame(
             session: session,
             variant: variant,
+            // GKInvite doesn't carry the inviter's variant. Invite
+            // recipients adopt it from the inviter's first
+            // matchConfirmation message; until then the popup is held
+            // back so we don't ask "Race Casey?" when they actually
+            // chose Co-op.
+            awaitingVariantFromPeer: isInviteRecipient,
             localDisplayName: local.displayName,
             remoteDisplayName: remote?.displayName ?? "Opponent"
         )
@@ -247,36 +243,14 @@ struct PlayCoordinator: View {
     }
 
     private func handleMatchmakingError(_ error: Error) {
-        // Capture the in-flight variant + intent before tearing the flow
-        // down so the alert can offer a "Try Normal instead" recovery.
-        // Invite-driven flows can't fall back (the invite is to a
-        // specific friend with a specific variant), so the fallback is
-        // gated to intent-driven flows only.
-        var fallbackVariant: VersusVariant = .normal
-        var fallbackIntent: VersusMatchIntent = .quickMatch
-        if case .matchmaker(let source, let variant) = versusFlow {
-            fallbackVariant = variant
-            if case .intent(let intent) = source {
-                fallbackIntent = intent
-            }
-        }
         versusFlow = nil
-        matchmakingError = MatchmakingError(
-            message: error.localizedDescription,
-            variant: fallbackVariant,
-            intent: fallbackIntent
-        )
+        matchmakingError = MatchmakingError(message: error.localizedDescription)
     }
 }
 
-/// Pulled out of `String?` so the alert can offer a variant-aware
-/// "Try Normal instead" recovery without losing the original intent
-/// (Quick Match vs Invite Friend).
 private struct MatchmakingError: Identifiable {
     let id = UUID()
     let message: String
-    let variant: VersusVariant
-    let intent: VersusMatchIntent
 }
 
 /// Single-cover state machine for everything Versus. Modeling matchmaker

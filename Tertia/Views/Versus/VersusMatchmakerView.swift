@@ -16,19 +16,18 @@ import OSLog
 
 private let logger = Logger(subsystem: "Mark.Tertia", category: "Matchmaker")
 
-/// Which matchmaking flow the user kicked off. Mapped to GameKit's
-/// `matchmakingMode` so Apple shows the right UI:
-/// - `.quickMatch` → automatchOnly (random opponent only)
-/// - `.inviteFriend` → inviteOnly (friend picker; no random match-up)
+/// Which matchmaking flow the user kicked off. Versus is invite-only —
+/// `.inviteFriend` maps to GameKit's `.inviteOnly` matchmaking mode so
+/// Apple's picker shows friends rather than auto-matching strangers.
+/// The enum stays an enum for future extensibility (e.g., a per-variant
+/// "spectate" mode) but currently has a single case.
 enum VersusMatchIntent: String, Identifiable, Equatable {
-    case quickMatch
     case inviteFriend
 
     var id: String { rawValue }
 
     fileprivate var matchmakingMode: GKMatchmakingMode {
         switch self {
-        case .quickMatch: return .automatchOnly
         case .inviteFriend: return .inviteOnly
         }
     }
@@ -39,6 +38,15 @@ enum VersusMatchIntent: String, Identifiable, Equatable {
 enum VersusMatchmakerSource {
     case intent(VersusMatchIntent)
     case acceptedInvite(GKInvite)
+
+    /// True when this source comes from a friend invite — the local
+    /// player didn't pick a variant; the inviter did. Used to flag the
+    /// resulting `VersusGame` so it adopts the variant from the
+    /// inviter's first `matchConfirmation`.
+    var isAcceptedInvite: Bool {
+        if case .acceptedInvite = self { return true }
+        return false
+    }
 }
 
 struct VersusMatchmakerView: UIViewControllerRepresentable {
