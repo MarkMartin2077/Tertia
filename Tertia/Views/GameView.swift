@@ -27,6 +27,10 @@ struct GameView: View {
     @State private var showGameOver = false
     @State private var showExitConfirm = false
     @State private var wasNewBest = false
+    /// Captured at timer expiry for Time Attack runs that ended with zero
+    /// trios found, so the game-over sheet can offer a "see what you
+    /// missed" disclosure. Reset to nil at every new-game.
+    @State private var missedTrioAtExpiry: [SetCard]? = nil
     @State private var taskTrigger = 0
     @State private var pulseToken = 0
     @State private var hasDealtInitialBoard = false
@@ -498,6 +502,7 @@ struct GameView: View {
                 totalTriosFound: game.totalSetsFound,
                 gameDurationSeconds: game.gameDurationSeconds,
                 averageTimeBetweenSetsSeconds: game.averageTimeBetweenSetsSeconds,
+                missedTrio: missedTrioAtExpiry,
                 onPlayAgain: {
                     showGameOver = false
                     startNewGame()
@@ -533,6 +538,7 @@ struct GameView: View {
         hasDealtInitialBoard = false
         didFireTimerWarning = false
         hasHandledExpiry = false
+        missedTrioAtExpiry = nil
         taskTrigger += 1
     }
 
@@ -658,6 +664,14 @@ struct GameView: View {
         game.markGameEnded()
         let finalScore = game.score
         let duration = Int(controller.totalDuration)
+
+        // Capture a missed trio for Time Attack zero-score endings so
+        // the sheet can offer a teaching disclosure. The board snapshot
+        // is taken before any teardown so the cards we surface are the
+        // exact ones the player was looking at when the timer hit zero.
+        if mode == .timeAttack, game.totalSetsFound == 0 {
+            missedTrioAtExpiry = game.findSetOnBoard()
+        }
 
         switch mode {
         case .daily:

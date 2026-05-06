@@ -24,8 +24,15 @@ struct GameOverSheet: View {
     var totalTriosFound: Int = 0
     var gameDurationSeconds: Double? = nil
     var averageTimeBetweenSetsSeconds: Double? = nil
+    /// A valid trio that was on the board when the game ended. Surfaced
+    /// for Time Attack runs that expired with zero trios found — the
+    /// disclosure button shows the player what they missed so the
+    /// game-over screen lands as a teaching moment rather than a wall.
+    var missedTrio: [SetCard]? = nil
     let onPlayAgain: () -> Void
     let onChangeMode: () -> Void
+
+    @State private var showsMissedTrio = false
 
     var body: some View {
         VStack(spacing: 24) {
@@ -56,6 +63,14 @@ struct GameOverSheet: View {
 
                 DeckClearedLine(strandedCardCount: strandedCardCount)
                     .padding(.top, 4)
+
+                if let missedTrio {
+                    MissedTrioDisclosure(
+                        trio: missedTrio,
+                        isExpanded: $showsMissedTrio
+                    )
+                    .padding(.top, 12)
+                }
             }
 
             VStack(spacing: 12) {
@@ -206,6 +221,92 @@ struct GameOverSheet: View {
         onPlayAgain: {},
         onChangeMode: {}
     )
+}
+
+/// Disclosure widget that reveals a valid trio the player missed when
+/// time ran out. Collapsed: a teaching CTA. Expanded: three cards laid
+/// out as they appeared on the board. Used only for Time Attack runs
+/// that expired with zero trios — see `GameOverSheet.missedTrio`.
+private struct MissedTrioDisclosure: View {
+    let trio: [SetCard]
+    @Binding var isExpanded: Bool
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        VStack(spacing: 12) {
+            Button {
+                withAnimation(reduceMotion ? .none : .spring(response: 0.4, dampingFraction: 0.85)) {
+                    isExpanded.toggle()
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: isExpanded ? "eye.slash.fill" : "eye.fill")
+                    Text(isExpanded ? "Hide" : "See a trio you missed")
+                        .font(.subheadline.weight(.semibold))
+                    if !isExpanded {
+                        Image(systemName: "chevron.right")
+                            .font(.caption.weight(.semibold))
+                            .opacity(0.6)
+                    }
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(.background.secondary, in: .capsule)
+                .overlay {
+                    Capsule()
+                        .strokeBorder(Color.secondary.opacity(0.2), lineWidth: 1)
+                }
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(isExpanded ? "Hide the missed trio" : "See a trio you missed")
+
+            if isExpanded {
+                MissedTrioCards(trio: trio)
+                    .transition(.opacity)
+            }
+        }
+    }
+}
+
+private struct MissedTrioCards: View {
+    let trio: [SetCard]
+
+    var body: some View {
+        VStack(spacing: 6) {
+            HStack(spacing: 8) {
+                ForEach(trio) { card in
+                    SetCardView(
+                        card: card,
+                        isSelected: false,
+                        isInvalid: false,
+                        action: {}
+                    )
+                    .frame(width: 76, height: 100)
+                    .allowsHitTesting(false)
+                }
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(accessibilityLabel)
+
+            Text("These three formed a valid trio.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+    }
+
+    private var accessibilityLabel: String {
+        // Pull the per-attribute analysis so VoiceOver gets the same
+        // "all same shape, different colors..." reading the player can
+        // figure out by looking.
+        let analysis = explain(trio)
+        let parts = CardAttribute.allCases.compactMap { attribute -> String? in
+            guard analysis.outcome(for: attribute) != nil else { return nil }
+            return describe(trio, attribute: attribute)
+        }
+        return "Missed trio: " + parts.joined(separator: ", ") + "."
+    }
 }
 
 /// Renders one of three states:
