@@ -66,6 +66,7 @@ struct VersusHeroCard: View {
             .controlSize(.large)
             .tint(.teal)
             .padding(.top, 4)
+            .accessibilityIdentifier("versusChooseModeButton")
         }
         .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)

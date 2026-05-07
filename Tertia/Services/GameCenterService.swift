@@ -165,6 +165,16 @@ final class GameCenterService {
     /// times across the app's lifetime — every state transition (logged in,
     /// logged out, prompt shown). Safe to call once at app launch.
     func authenticate() {
+        // Screenshot mode: skip the live GameKit handshake and pretend
+        // we're authenticated so flows that gate on Game Center (e.g.,
+        // the Versus mode picker) can be screenshotted without a real
+        // sandbox account.
+        if CommandLine.arguments.contains("-mockGameCenterAuth") {
+            self.isAuthenticated = true
+            self.hasCompletedFirstAttempt = true
+            self.localPlayerDisplayName = "Demo Player"
+            return
+        }
         GKLocalPlayer.local.authenticateHandler = { [weak self] viewController, error in
             // GameKit calls this on the main thread today, but Apple doesn't
             // commit to that in the Swift concurrency contract. Hop to

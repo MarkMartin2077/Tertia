@@ -22,6 +22,9 @@ final class MajorScreenshotsTests: XCTestCase {
         app.launchArguments = [
             "-hasCompletedOnboarding", "1",
             "-screenshotMockData",
+            // Bypass the GameKit handshake so the Versus picker doesn't
+            // get blocked by the sign-in prompt in the simulator.
+            "-mockGameCenterAuth",
             "-colorSchemePreference", "light"
         ]
         app.launch()
@@ -220,5 +223,41 @@ final class MajorScreenshotsTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Choose Mode"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.staticTexts["DONE"].waitForExistence(timeout: 3))
         captureForDevice("major-daily-done")
+    }
+
+    @MainActor
+    func testVersusModePicker() throws {
+        // Versus hero card → "Choose a Mode" sheet pushes up. Captures the
+        // three-variant picker with stat blurbs populated from the mock
+        // data (which now includes mixed .normal / .firstTo10 / .coop
+        // matches).
+        let app = launchPostOnboarding()
+        XCTAssertTrue(app.staticTexts["Choose Mode"].waitForExistence(timeout: 3))
+        app.buttons["versusChooseModeButton"].tap()
+        // Variant cards combine their text into a single accessibility
+        // label, so the title texts ("NORMAL" etc.) aren't reachable as
+        // separate elements. Wait on the picker's primary CTA instead.
+        XCTAssertTrue(app.buttons["Invite a Friend"].waitForExistence(timeout: 3))
+        Thread.sleep(forTimeInterval: 0.4)
+        captureForDevice("major-versus-picker")
+    }
+
+    @MainActor
+    func testVersusModePickerFirstTo10Selected() throws {
+        // Same picker, with First to 10 highlighted — shows the
+        // description panel expanded and the accent-tinted action bar.
+        let app = launchPostOnboarding()
+        XCTAssertTrue(app.staticTexts["Choose Mode"].waitForExistence(timeout: 3))
+        app.buttons["versusChooseModeButton"].tap()
+        XCTAssertTrue(app.buttons["Invite a Friend"].waitForExistence(timeout: 3))
+        // Each variant card is one button. Find the First-to-10 row by
+        // its accessibility label prefix and tap it.
+        let firstTo10 = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "FIRST TO 10")
+        ).firstMatch
+        XCTAssertTrue(firstTo10.waitForExistence(timeout: 3))
+        firstTo10.tap()
+        Thread.sleep(forTimeInterval: 0.5)
+        captureForDevice("major-versus-picker-firstto10")
     }
 }

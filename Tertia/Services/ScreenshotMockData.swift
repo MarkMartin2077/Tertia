@@ -103,24 +103,32 @@ enum ScreenshotMockData {
             ))
         }
 
-        // Versus matches — believable mix of W/L/F/D so the stats tile row
-        // has all four values populated. Opponent names are stable so the
-        // recent-matches list reads naturally in screenshots.
-        let versusMatches: [(daysAgo: Int, opponent: String, you: Int, them: Int, yourTrios: Int, theirTrios: Int, outcome: VersusOutcome)] = [
-            (20, "Casey",  18, 22,  8, 11, .loss),
-            (18, "Riley",  24, 16, 12,  8, .win),
-            (15, "Casey",  20, 20, 10, 10, .draw),
-            (13, "Jordan", 26, 14, 13,  7, .win),
-            (11, "Riley",   8, 18,  4,  9, .forfeit),
-            (9,  "Sam",    22, 19, 11, 10, .win),
-            (7,  "Jordan", 17, 23,  9, 12, .loss),
-            (6,  "Casey",  28, 20, 14, 10, .win),
-            (5,  "Sam",    21, 21, 11, 11, .draw),
-            (4,  "Riley",  19, 25, 10, 12, .loss),
-            (3,  "Jordan", 30, 17, 15,  9, .win),
-            (2,  "Sam",    25, 23, 13, 12, .win),
-            (1,  "Casey",  24, 28, 12, 14, .loss),
-            (0,  "Riley",  27, 22, 14, 11, .win)
+        // Versus matches — believable mix of variants and outcomes so:
+        //   - Picker stat blurbs populate ("12-8 W-L" for Normal /
+        //     First-to-10, "3 runs" for Co-op)
+        //   - Stats Versus section shows W/L/F/D tiles plus the coop
+        //     runs summary
+        // Opponent names are stable so the recent-matches list reads
+        // naturally in screenshots.
+        let versusMatches: [(daysAgo: Int, opponent: String, you: Int, them: Int, yourTrios: Int, theirTrios: Int, outcome: VersusOutcome, variant: VersusVariant)] = [
+            (20, "Casey",  18, 22,  8, 11, .loss,          .normal),
+            (18, "Riley",  24, 16, 12,  8, .win,           .normal),
+            (16, "Sam",    34, 28, 17, 14, .coopCompleted, .coop),
+            (15, "Casey",  20, 20, 10, 10, .draw,          .normal),
+            (13, "Jordan", 26, 14, 13,  7, .win,           .normal),
+            (12, "Riley",  18, 12, 10,  6, .win,           .firstTo10),
+            (11, "Riley",   8, 18,  4,  9, .forfeit,       .normal),
+            (10, "Jordan", 36, 30, 18, 15, .coopCompleted, .coop),
+            (9,  "Sam",    22, 19, 11, 10, .win,           .normal),
+            (8,  "Casey",  14, 20,  7, 10, .loss,          .firstTo10),
+            (7,  "Jordan", 17, 23,  9, 12, .loss,          .normal),
+            (6,  "Casey",  28, 20, 14, 10, .win,           .normal),
+            (5,  "Sam",    21, 21, 11, 11, .draw,          .normal),
+            (4,  "Riley",  19, 25, 10, 12, .loss,          .normal),
+            (3,  "Jordan", 16, 12, 10,  7, .win,           .firstTo10),
+            (2,  "Sam",    32, 26, 16, 13, .coopCompleted, .coop),
+            (1,  "Casey",  24, 28, 12, 14, .loss,          .normal),
+            (0,  "Riley",  16, 11, 10,  6, .win,           .firstTo10)
         ]
         for entry in versusMatches {
             guard let date = cal.date(byAdding: .day, value: -entry.daysAgo, to: now) else { continue }
@@ -131,7 +139,8 @@ enum ScreenshotMockData {
                 opponentScore: entry.them,
                 yourTrios: entry.yourTrios,
                 opponentTrios: entry.theirTrios,
-                outcome: entry.outcome
+                outcome: entry.outcome,
+                variant: entry.variant
             ))
         }
     }
