@@ -27,6 +27,7 @@ struct GameView: View {
     @State private var showNoHintAlert = false
     @State private var showGameOver = false
     @State private var showExitConfirm = false
+    @State private var showAudioSheet = false
     @State private var wasNewBest = false
     /// Captured at timer expiry for Time Attack runs that ended with zero
     /// trios found, so the game-over sheet can offer a "see what you
@@ -242,6 +243,9 @@ struct GameView: View {
                     // SetGame's `gameEndedAt` guard, taps post-expiry
                     // are now a no-op either way.
                     .interactiveDismissDisabled()
+            }
+            .sheet(isPresented: $showAudioSheet) {
+                InGameAudioSheet(onDone: { showAudioSheet = false })
             }
         }
     }
@@ -478,6 +482,10 @@ struct GameView: View {
                     }
                 }
             }
+            Button("Sound", systemImage: "speaker.wave.2") {
+                showAudioSheet = true
+            }
+            .accessibilityLabel("Sound and haptics")
         }
     }
 

@@ -716,10 +716,11 @@ struct VersusGameTests {
 
     @Test("First-to-N mercy: leader wins when trailer can't reach threshold")
     func firstToNMercyEndsEarly() async throws {
-        // Setup: First-to-3 with a thin remainder. Leader has 2 trios,
-        // trailer has 0. Threshold is 3. We'll drain the deck so only a
-        // few cards remain — at the point where the trailer could only
-        // possibly claim 0 more trios, mercy must fire.
+        // Strategy: drain the deck up front so each claim removes cards
+        // from the board without refilling. Then host claims twice. After
+        // the second claim, board has 6 cards (12 initial − 2×3 matched,
+        // no refill), so max remaining trios = 6/3 = 2. Guest at 0,
+        // threshold 3 → guest + 2 < 3 → mercy fires inside evaluateGameOver.
         let hostTransport = StubMatchTransport(localPlayerID: "P-1", remotePlayerID: "P-2")
         let guestTransport = StubMatchTransport(localPlayerID: "P-2", remotePlayerID: "P-1")
         hostTransport.peer = guestTransport
@@ -748,7 +749,12 @@ struct VersusGameTests {
         await guestGame.acceptMatch()
         try await tick()
 
-        // Plant + claim two trios for the host so they're at 2 / threshold 3.
+        // Drain the deck up front so claims don't refill the board —
+        // each claim is a permanent reduction in remaining-trio capacity.
+        hostGame.setGame.deck = []
+        guestGame.setGame.deck = []
+
+        // Plant trio1 at the head of the board and have host claim it.
         let trio1 = [
             SetCard(shape: .circle, count: .one, color: .red, fill: .filled),
             SetCard(shape: .square, count: .two, color: .green, fill: .empty),
@@ -761,6 +767,13 @@ struct VersusGameTests {
         for card in trio1 { await hostGame.toggleSelection(card) }
         try await tick()
 
+        // After trio1: board has 9 cards (no refill), max remaining = 3.
+        // Guest at 0, threshold 3 → 0 + 3 = 3, NOT less than 3, mercy
+        // does not fire yet.
+        #expect(hostGame.hostTrios == 1)
+        #expect(hostGame.outcome == nil)
+
+        // Plant trio2 on the new front of the board and host claims.
         let trio2 = [
             SetCard(shape: .circle, count: .two, color: .red, fill: .empty),
             SetCard(shape: .square, count: .three, color: .green, fill: .rightHalf),
@@ -773,32 +786,10 @@ struct VersusGameTests {
         for card in trio2 { await hostGame.toggleSelection(card) }
         try await tick()
 
+        // After trio2: board has 6 cards, max remaining = 2. Guest at 0,
+        // threshold 3 → 0 + 2 < 3 → mercy fires inside this claim's
+        // evaluateGameOver call. Host wins, guest sees loss.
         #expect(hostGame.hostTrios == 2)
-        #expect(hostGame.guestTrios == 0)
-        #expect(hostGame.outcome == nil) // not over yet — host needs 1 more
-
-        // Drain the deck so total remaining cards (board + deck) is below
-        // 3 — then guest can't claim any more trios. Threshold is 3,
-        // guest at 0, can claim 0 trios → 0 < 3 → mercy fires.
-        hostGame.setGame.deck = []
-        guestGame.setGame.deck = []
-        // Plant a couple of cards on the board that don't form a trio
-        // (to be safe — even if they did, board.count / 3 = 0 trios).
-        let stubs = [
-            SetCard(shape: .circle, count: .one, color: .red, fill: .filled),
-            SetCard(shape: .circle, count: .one, color: .red, fill: .empty)
-        ]
-        hostGame.setGame.boardSlots = stubs
-        guestGame.setGame.boardSlots = stubs
-
-        // Nudge evaluateGameOver via a deal-three request (host applies,
-        // re-evaluates). With deck empty this is a no-op for state but
-        // gives evaluateGameOver a chance to run.
-        await hostGame.requestDealThree()
-        try await tick()
-
-        // Mercy should have fired — host is leader, guest mathematically
-        // pinned below threshold.
         #expect(hostGame.outcome == .win)
         #expect(guestGame.outcome == .loss)
     }

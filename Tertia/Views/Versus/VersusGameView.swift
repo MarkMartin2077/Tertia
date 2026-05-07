@@ -38,6 +38,7 @@ struct VersusGameView: View {
 
     @State private var showForfeitConfirm = false
     @State private var showGameOver = false
+    @State private var showAudioSheet = false
     /// Whether the captioned lockout bar has appeared yet this match. Used
     /// to switch to the compact dial after the first explanation.
     @State private var hasShownLockoutCaption = false
@@ -194,6 +195,9 @@ struct VersusGameView: View {
                 .presentationDetents([.large])
                 .interactiveDismissDisabled()
             }
+            .sheet(isPresented: $showAudioSheet) {
+                InGameAudioSheet(onDone: { showAudioSheet = false })
+            }
             .task {
                 await game.start()
             }
@@ -337,6 +341,12 @@ struct VersusGameView: View {
                 .tint(.red)
                 .disabled(game.outcome != nil)
             }
+        }
+        ToolbarItem(placement: .topBarTrailing) {
+            Button("Sound", systemImage: "speaker.wave.2") {
+                showAudioSheet = true
+            }
+            .accessibilityLabel("Sound and haptics")
         }
     }
 }
