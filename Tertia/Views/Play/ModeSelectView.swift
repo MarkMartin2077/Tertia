@@ -11,6 +11,9 @@ struct ModeSelectView: View {
     @Environment(DailyStore.self) private var dailyStore
     @Environment(VersusStore.self) private var versusStore
     @AppStorage("hasFinishedAnyGame") private var hasFinishedAnyGame: Bool = false
+    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding: Bool = false
+    @AppStorage("hasFinishedTutorial") private var hasFinishedTutorial: Bool = false
+    @AppStorage("hasSeenTutorialNudge") private var hasSeenTutorialNudge: Bool = false
 
     let lastPlayed: GameMode?
     let onSelect: (GameMode) -> Void
@@ -90,8 +93,13 @@ struct ModeSelectView: View {
                     ModeCard(
                         mode: mode,
                         isLastPlayed: lastPlayed == mode,
-                        showsRecommendedBadge: mode == .practice && !hasFinishedAnyGame,
-                        onTap: { onSelect(mode) }
+                        showsRecommendedBadge: shouldShowRecommendedBadge(for: mode),
+                        onTap: {
+                            // Any mode-card tap clears the one-time tutorial nudge —
+                            // the player made a choice, get out of their way.
+                            if !hasSeenTutorialNudge { hasSeenTutorialNudge = true }
+                            onSelect(mode)
+                        }
                     )
                 }
             }
@@ -100,6 +108,16 @@ struct ModeSelectView: View {
     }
 
     // MARK: - Derived
+
+    /// One-time "Recommended — start here" badge on the tutorial card after
+    /// onboarding completes. Disappears the moment the player taps any
+    /// mode card (their choice is acknowledged either way).
+    private func shouldShowRecommendedBadge(for mode: GameMode) -> Bool {
+        guard mode == .tutorial else { return false }
+        return hasCompletedOnboarding
+            && !hasFinishedTutorial
+            && !hasSeenTutorialNudge
+    }
 
     private var dateText: String {
         let formatter = DateFormatter()
@@ -164,7 +182,7 @@ private struct ModeCard: View {
                         }
                     }
                     if showsRecommendedBadge {
-                        Text("Recommended for new players")
+                        Text("Recommended — start here")
                             .font(.caption2.weight(.semibold))
                             .padding(.horizontal, 8)
                             .padding(.vertical, 3)

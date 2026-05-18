@@ -15,24 +15,8 @@ struct PracticeVerdictBar: View {
     var body: some View {
         Button(action: onDismiss) {
             VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 10) {
-                    Image(systemName: explanation.isSet ? "checkmark.circle.fill" : "xmark.circle.fill")
-                        .font(.title3)
-                        .foregroundStyle(verdictColor)
-                    Text(explanation.isSet ? "It's a trio!" : "Not a trio")
-                        .font(.subheadline.bold())
-                        .foregroundStyle(.primary)
-                    Spacer(minLength: 8)
-                    Image(systemName: "chevron.right")
-                        .font(.footnote)
-                        .foregroundStyle(.tertiary)
-                }
-
-                VStack(spacing: 4) {
-                    ForEach(CardAttribute.allCases) { attribute in
-                        attributeRow(attribute)
-                    }
-                }
+                headerRow
+                attributeRows
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 14)
@@ -50,6 +34,31 @@ struct PracticeVerdictBar: View {
         .accessibilityLabel(explanation.isSet ? "Valid trio" : "Not a trio")
         .accessibilityValue(accessibilityValue)
         .accessibilityHint("Double tap to continue")
+    }
+
+    // MARK: - Content
+
+    private var headerRow: some View {
+        HStack(spacing: 10) {
+            Image(systemName: explanation.isSet ? "checkmark.circle.fill" : "xmark.circle.fill")
+                .font(.title3)
+                .foregroundStyle(verdictColor)
+            Text(explanation.isSet ? "It's a trio!" : "Not a trio")
+                .font(.subheadline.bold())
+                .foregroundStyle(.primary)
+            Spacer(minLength: 8)
+            Image(systemName: "chevron.right")
+                .font(.footnote)
+                .foregroundStyle(.tertiary)
+        }
+    }
+
+    private var attributeRows: some View {
+        VStack(spacing: 4) {
+            ForEach(CardAttribute.allCases) { attribute in
+                attributeRow(attribute)
+            }
+        }
     }
 
     private var verdictColor: Color {

@@ -10,10 +10,12 @@ import GameKit
 
 struct PlayCoordinator: View {
     @AppStorage("lastGameMode") private var lastGameModeRaw: String = GameMode.normal.rawValue
+    @AppStorage("hasFinishedTutorial") private var hasFinishedTutorial: Bool = false
     @Binding var requestedMode: GameMode?
     @Binding var requestedInvite: PendingMatchInvite?
     @Environment(GameCenterService.self) private var gameCenter
     @State private var activeMode: GameMode?
+    @State private var showTutorial = false
     @State private var versusFlow: VersusFlow?
     @State private var matchmakingError: MatchmakingError?
     /// Set when the user taps Versus while signed out of Game Center.
@@ -43,6 +45,22 @@ struct PlayCoordinator: View {
         )
         .fullScreenCover(item: $activeMode) { mode in
             GameView(mode: mode, onExit: { activeMode = nil })
+        }
+        .fullScreenCover(isPresented: $showTutorial) {
+            TutorialView(onExit: { completedNaturally, nextMode in
+                showTutorial = false
+                if completedNaturally {
+                    hasFinishedTutorial = true
+                }
+                if let nextMode {
+                    // "Play Normal" from the completion sheet — kick off a
+                    // fresh game once the tutorial cover finishes dismissing.
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .milliseconds(350))
+                        startMode(nextMode)
+                    }
+                }
+            })
         }
         .fullScreenCover(item: $versusFlow) { flow in
             switch flow {
@@ -201,6 +219,12 @@ struct PlayCoordinator: View {
 
     private func startMode(_ mode: GameMode) {
         guard mode != .versus else { return }
+        if mode == .tutorial {
+            // Tutorial routes through its own cover and isn't a "last played"
+            // mode — it's an on-ramp, not a replayable mode.
+            showTutorial = true
+            return
+        }
         lastGameModeRaw = mode.rawValue
         activeMode = mode
     }

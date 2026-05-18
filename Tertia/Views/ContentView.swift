@@ -35,7 +35,10 @@ struct ContentView: View {
                 })
             }
             Tab("Settings", systemImage: "gearshape.fill", value: AppTab.settings) {
-                SettingsView()
+                SettingsView(onReplayTutorial: {
+                    requestedPlayMode = .tutorial
+                    selectedTab = .play
+                })
             }
         }
         .fullScreenCover(isPresented: showingOnboarding) {

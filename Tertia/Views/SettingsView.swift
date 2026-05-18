@@ -39,6 +39,10 @@ struct SettingsView: View {
     @Environment(GameCenterService.self) private var gameCenter
     @Environment(MusicService.self) private var music
 
+    /// Settings can request a tutorial replay by writing through these
+    /// bindings — they share the same channel the daily-launch flow uses.
+    var onReplayTutorial: (() -> Void)? = nil
+
     var body: some View {
         NavigationStack {
             Form {
@@ -66,6 +70,23 @@ struct SettingsView: View {
                 Section("Help") {
                     NavigationLink("How to Play") {
                         RulesView()
+                    }
+                    if let onReplayTutorial {
+                        Button {
+                            onReplayTutorial()
+                        } label: {
+                            HStack {
+                                Label("Replay tutorial", systemImage: "book.fill")
+                                    .foregroundStyle(.primary)
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .foregroundStyle(.tertiary)
+                                    .font(.footnote)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Replay tutorial")
+                        .accessibilityHint("Restart the 10-puzzle tutorial from the beginning")
                     }
                     Link(destination: AppLinks.support) {
                         ExternalLinkRow(title: "Support", systemImage: "questionmark.circle")
